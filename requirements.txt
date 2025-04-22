@@ -1,4 +1,6 @@
 streamlit
+streamlit-webrtc
 opencv-python
 mediapipe
 requests
+av
