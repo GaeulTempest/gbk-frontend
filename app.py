@@ -1,51 +1,48 @@
 import streamlit as st
-import requests
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import cv2
+import requests
 from gesture_utils import get_finger_count
+import av
 
-# ✅ URL backend dari Railway
 BASE_URL = "https://web-production-7e17f.up.railway.app"
+st.title("🕹️ Gunting Batu Kertas - ONLINE")
 
-st.title("🕹️ Gunting Batu Kertas - Multiplayer Online")
 player = st.selectbox("Pilih peran", ["A", "B"])
-frame_window = st.image([])
+gesture_result = st.empty()
 
-# Buka kamera
-cap = cv2.VideoCapture(0)
-gesture = None
+class VideoProcessor(VideoTransformerBase):
+    def __init__(self):
+        self.gesture = None
 
-st.info("Tunjukkan gesture tanganmu ke kamera...")
+    def transform(self, frame):
+        img = frame.to_ndarray(format="bgr24")
+        gesture, processed = get_finger_count(img)
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        st.error("Kamera tidak terdeteksi.")
-        break
+        if gesture:
+            cv2.putText(processed, f"{gesture}", (30, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 3)
+            self.gesture = gesture
 
-    frame = cv2.flip(frame, 1)
-    result, processed_frame = get_finger_count(frame)
+        return processed
 
-    if result:
-        cv2.putText(processed_frame, f"{result}", (50, 100),
-                    cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 3)
-        gesture = result
+ctx = webrtc_streamer(
+    key="gbk",
+    video_processor_factory=VideoProcessor,
+    media_stream_constraints={"video": True, "audio": False}
+)
 
-    frame_window.image(cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB))
-
+# Tombol kirim gesture
+if st.button("📤 Kirim Gerakan"):
+    gesture = ctx.video_processor.gesture if ctx.video_processor else None
     if gesture in ["Batu", "Gunting", "Kertas"]:
-        if st.button("📤 Kirim Gerakan"):
-            try:
-                response = requests.post(f"{BASE_URL}/submit",
-                                         json={"player": player, "move": gesture})
-                if response.status_code == 200:
-                    st.success(f"Gerakan '{gesture}' dikirim sebagai Player {player}")
-                else:
-                    st.error("Gagal mengirim gerakan ke server.")
-            except Exception as e:
-                st.error(f"Terjadi kesalahan: {e}")
-            break
-
-cap.release()
+        try:
+            requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture})
+            st.success(f"Gerakan '{gesture}' dikirim sebagai Player {player}")
+        except Exception as e:
+            st.error(f"Error mengirim ke server: {e}")
+    else:
+        st.warning("Gesture belum dikenali")
 
 # Tombol lihat hasil
 if st.button("📊 Lihat Hasil"):
@@ -56,5 +53,5 @@ if st.button("📊 Lihat Hasil"):
             st.success(f"🏆 Hasil: {res['result']}")
         else:
             st.warning("Menunggu lawan bermain...")
-    except Exception as e:
-        st.error(f"Gagal mengakses server: {e}")
+    except:
+        st.error("Gagal terhubung ke server.")
