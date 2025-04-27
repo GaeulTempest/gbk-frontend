@@ -49,7 +49,7 @@ gesture_result = st.empty()
 # --- Kamera WebRTC dan Gesture Processor ---
 class VideoProcessor(VideoTransformerBase):
     def __init__(self):
-        self.current_gesture = None
+        self.gesture = None
 
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
@@ -58,43 +58,43 @@ class VideoProcessor(VideoTransformerBase):
         if gesture:
             cv2.putText(processed, f"{gesture}", (30, 60),
                         cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 3)
-            self.current_gesture = gesture
+        self.gesture = gesture
 
         return av.VideoFrame.from_ndarray(processed, format="bgr24")
 
 ctx = webrtc_streamer(
-    key="example",
+    key="gbk",
     video_processor_factory=VideoProcessor,
     media_stream_constraints={"video": True, "audio": False}
 )
 
 # --- Handle Gesture Auto Submit ---
-if ctx.state.playing and ctx.video_processor:
-    detected_gesture = ctx.video_processor.current_gesture
+if ctx and ctx.video_processor:
+    gesture_now = ctx.video_processor.gesture
 
-    if detected_gesture in ["Batu", "Gunting", "Kertas"]:
-        if st.session_state.detected_gesture == detected_gesture:
+    if gesture_now in ["Batu", "Gunting", "Kertas"]:
+        if st.session_state.detected_gesture == gesture_now:
             elapsed = time.time() - st.session_state.gesture_start_time
             if elapsed >= 2 and not st.session_state.gesture_submitted:
                 try:
                     response = requests.post(f"{BASE_URL}/submit", json={
                         "player": st.session_state.get("player", "A"),
-                        "move": detected_gesture
+                        "move": gesture_now
                     })
                     if response.status_code == 200:
-                        st.success(f"✅ Auto-submit sukses! Gerakan '{detected_gesture}' dikirim!")
+                        st.success(f"✅ Auto-submit sukses! Gerakan '{gesture_now}' dikirim!")
                         st.session_state.gesture_submitted = True
                         ctx.stop()
                 except Exception as e:
                     st.error(f"🚨 Gagal auto-submit gesture: {e}")
         else:
-            st.session_state.detected_gesture = detected_gesture
+            st.session_state.detected_gesture = gesture_now
             st.session_state.gesture_start_time = time.time()
 
 # --- Tombol Manual Submit ---
-if not st.session_state.gesture_submitted and ctx.state.playing:
+if not st.session_state.gesture_submitted and ctx and ctx.video_processor:
     if st.button("📤 Kirim Gerakan Manual"):
-        gesture = ctx.video_processor.current_gesture if ctx.video_processor else None
+        gesture = ctx.video_processor.gesture
         if gesture in ["Batu", "Gunting", "Kertas"]:
             try:
                 response = requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture})
