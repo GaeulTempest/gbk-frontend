@@ -4,3 +4,5 @@ opencv-python-headless
 mediapipe
 requests
 av
+Pillow
+pyyaml
