@@ -26,10 +26,14 @@ if "auto_gesture_ready" not in st.session_state:
 if "camera_stop_request" not in st.session_state:
     st.session_state.camera_stop_request = False
 
+if "force_rerun" not in st.session_state:
+    st.session_state.force_rerun = False
+
 # Timer
 elapsed_time = int(time.time() - st.session_state.start_time)
 remaining_time = 30 - elapsed_time
 
+# Auto refresh untuk timer
 if not st.session_state.gesture_submitted and not st.session_state.camera_stop_request:
     st_autorefresh(interval=1000, limit=None, key="timer_refresh")
 
@@ -76,9 +80,10 @@ class VideoProcessor(VideoTransformerBase):
             if gesture == self.last_gesture:
                 if self.gesture_start_time and not self.confirmed:
                     elapsed = time.time() - self.gesture_start_time
-                    if elapsed > 2:  # 2 detik stabil
+                    if elapsed > 2:
                         st.session_state.auto_gesture_ready = True
                         st.session_state.auto_gesture_move = gesture
+                        st.session_state.force_rerun = True  # Minta rerun app
                         self.confirmed = True
             else:
                 self.last_gesture = gesture
@@ -92,6 +97,11 @@ ctx = webrtc_streamer(
     video_processor_factory=VideoProcessor,
     media_stream_constraints={"video": True, "audio": False}
 )
+
+# --- PAKSA RERUN KETIKA GESTURE READY ---
+if st.session_state.get("force_rerun", False):
+    st.session_state.force_rerun = False
+    st.experimental_rerun()
 
 # --- DETEKSI DAN EKSEKUSI AUTO SUBMIT ---
 if ctx and ctx.state.playing and st.session_state.get('auto_gesture_ready', False):
