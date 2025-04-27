@@ -34,13 +34,13 @@ else:
     progress.progress(1.0)
     st.error("⏰ Waktu habis!")
     st.warning("Klik tombol di bawah ini untuk memulai ulang game.")
-    
+
     if st.button("🔄 Main Lagi"):
         # Reset session_state dan reload app
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.experimental_rerun()
-    
+
     st.stop()  # Hentikan semua interaksi lainnya
 
 gesture_result = st.empty()
@@ -72,12 +72,18 @@ if st.button("📤 Kirim Gerakan"):
     gesture = ctx.video_processor.gesture if ctx.video_processor else None
     if gesture in ["Batu", "Gunting", "Kertas"]:
         try:
-            requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture})
-            st.success(f"Gerakan '{gesture}' dikirim sebagai Player {player}")
+            response = requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture})
+            if response.status_code == 200:
+                st.success(f"✅ Gerakan '{gesture}' berhasil dikirim sebagai Player {player}!")
+                # Reset timer setelah berhasil kirim
+                if "start_time" in st.session_state:
+                    del st.session_state["start_time"]
+            else:
+                st.error(f"⚠️ Gagal mengirim: {response.json().get('error', 'Unknown error')}")
         except Exception as e:
-            st.error(f"Error mengirim ke server: {e}")
+            st.error(f"🚨 Error mengirim ke server: {e}")
     else:
-        st.warning("Gesture belum dikenali")
+        st.warning("✋ Gesture belum dikenali. Pastikan tanganmu terlihat jelas.")
 
 # Tombol Lihat Hasil
 if st.button("📊 Lihat Hasil"):
@@ -88,5 +94,5 @@ if st.button("📊 Lihat Hasil"):
             st.success(f"🏆 Hasil: {res['result']}")
         else:
             st.warning("Menunggu lawan bermain...")
-    except:
-        st.error("Gagal terhubung ke server.")
+    except Exception as e:
+        st.error(f"Error mengambil hasil dari server: {e}")
