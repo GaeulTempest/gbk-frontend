@@ -5,6 +5,7 @@ import time
 import requests
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import mediapipe as mp
+from streamlit_autorefresh import st_autorefresh
 
 # URL backend API server kamu
 BASE_URL = "https://web-production-7e17f.up.railway.app"
@@ -42,6 +43,9 @@ else:
             del st.session_state[key]
         st.experimental_rerun()
     st.stop()
+
+# --- Auto-refresh setiap 1 detik (saat kamera aktif) ---
+st_autorefresh(interval=1000, limit=None, key="refresh_key")
 
 # --- Fungsi Deteksi Gesture ---
 def detect_gesture(hand_landmarks):
@@ -92,7 +96,7 @@ class VideoProcessor(VideoTransformerBase):
                 gesture = detect_gesture(hand_landmarks)
 
         self.gesture = gesture
-        st.session_state.current_gesture = self.gesture  # Update gesture realtime
+        st.session_state.current_gesture = self.gesture
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
@@ -104,7 +108,7 @@ ctx = webrtc_streamer(
 )
 
 # --- Tampilkan Text Real-time ---
-if ctx.state.playing:
+if ctx and ctx.state.playing:
     st.subheader("📸 Kamera Aktif!")
     st.success(f"🖐️ Gerakan Terdeteksi: **{st.session_state.current_gesture}**")
 else:
