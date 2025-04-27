@@ -21,19 +21,27 @@ if "start_time" not in st.session_state:
 elapsed_time = int(time.time() - st.session_state.start_time)
 remaining_time = 30 - elapsed_time
 
-# Auto refresh tiap 1 detik selama masih ada waktu
-if remaining_time > 0:
-    st_autorefresh(interval=1000, limit=None, key="timer_refresh")
+# Auto refresh tiap 1 detik
+st_autorefresh(interval=1000, limit=None, key="timer_refresh")
 
 # Progress bar
 progress = st.progress(0)
+
 if remaining_time > 0:
     progress.progress((30 - remaining_time) / 30)
     st.info(f"⏳ Sisa waktu: {remaining_time} detik")
 else:
     progress.progress(1.0)
-    st.error("⏰ Waktu habis! Silakan refresh halaman untuk memulai ulang.")
-    st.stop()  # Hentikan semua interaksi tanpa error
+    st.error("⏰ Waktu habis!")
+    st.warning("Klik tombol di bawah ini untuk memulai ulang game.")
+    
+    if st.button("🔄 Main Lagi"):
+        # Reset session_state dan reload app
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.experimental_rerun()
+    
+    st.stop()  # Hentikan semua interaksi lainnya
 
 gesture_result = st.empty()
 
