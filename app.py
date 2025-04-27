@@ -47,7 +47,10 @@ else:
 
 gesture_result = st.empty()
 
-# --- VideoProcessor Class pakai recv() ---
+# Fungsi untuk cek apakah jari terbuka
+def finger_open(hand, tip_id, pip_id):
+    return hand.landmark[tip_id].y < hand.landmark[pip_id].y
+
 class VideoProcessor(VideoTransformerBase):
     def __init__(self):
         self.gesture = None
@@ -60,36 +63,41 @@ class VideoProcessor(VideoTransformerBase):
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         results = self.hands.process(img_rgb)
-        gesture = None
+        gesture = "Tidak dikenali"
 
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
                 self.mp_draw.draw_landmarks(img, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
 
-            # Gesture logic sederhana
-            hand = results.multi_hand_landmarks[0]
-            count = 0
+                fingers = []
 
-            # Thumb
-            if hand.landmark[4].x < hand.landmark[3].x:
-                count += 1
-            # 4 Fingers
-            for tip in [8, 12, 16, 20]:
-                if hand.landmark[tip].y < hand.landmark[tip - 2].y:
-                    count += 1
+                # Thumb: bandingkan X, karena thumb ke samping
+                if hand_landmarks.landmark[4].x < hand_landmarks.landmark[3].x:
+                    fingers.append(1)
+                else:
+                    fingers.append(0)
 
-            if count == 0:
-                gesture = "Batu"
-            elif count == 2:
-                gesture = "Gunting"
-            elif count == 5:
-                gesture = "Kertas"
-            else:
-                gesture = "Tidak dikenali"
+                # 4 fingers: telunjuk, tengah, manis, kelingking
+                for tip, pip in [(8, 6), (12, 10), (16, 14), (20, 18)]:
+                    fingers.append(1 if finger_open(hand_landmarks, tip, pip) else 0)
+
+                # Analisis jumlah jari terbuka
+                total_fingers = sum(fingers)
+
+                if total_fingers == 0:
+                    gesture = "Batu"
+                elif total_fingers == 2:
+                    gesture = "Gunting"
+                elif total_fingers == 5:
+                    gesture = "Kertas"
+                else:
+                    gesture = "Tidak dikenali"
 
         self.gesture = gesture
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
+
+
 
 # --- WebRTC Streamer ---
 ctx = webrtc_streamer(
