@@ -6,15 +6,16 @@ import requests
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import mediapipe as mp
 
+# URL backend API server kamu
 BASE_URL = "https://web-production-7e17f.up.railway.app"
 
 st.title("🕹️ Gunting Batu Kertas - ONLINE")
 
-# --- PILIHAN PLAYER ---
+# --- Pilih Peran ---
 player = st.selectbox("Pilih peran", ["A", "B"])
 st.session_state.player = player
 
-# --- SETUP session_state ---
+# --- Setup Session State ---
 if "start_time" not in st.session_state:
     st.session_state.start_time = time.time()
 
@@ -27,7 +28,7 @@ if "detected_gesture" not in st.session_state:
 if "gesture_start_time" not in st.session_state:
     st.session_state.gesture_start_time = None
 
-# --- TIMER DAN PROGRESS ---
+# --- Progress Bar Timer ---
 elapsed_time = int(time.time() - st.session_state.start_time)
 remaining_time = 30 - elapsed_time
 progress = st.progress(0)
@@ -38,7 +39,7 @@ if remaining_time > 0:
 else:
     progress.progress(1.0)
     st.error("⏰ Waktu habis!")
-    st.warning("Klik tombol di bawah ini untuk memulai ulang game.")
+    st.warning("Klik tombol di bawah untuk memulai ulang game.")
     if st.button("🔄 Main Lagi"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
@@ -47,10 +48,35 @@ else:
 
 gesture_result = st.empty()
 
-# Fungsi untuk cek apakah jari terbuka
-def finger_open(hand, tip_id, pip_id):
-    return hand.landmark[tip_id].y < hand.landmark[pip_id].y
+# --- Fungsi Deteksi Gesture ---
+def detect_gesture(hand_landmarks):
+    fingers = []
 
+    # Thumb: cek apakah terbuka
+    if hand_landmarks.landmark[4].x < hand_landmarks.landmark[3].x:
+        fingers.append(1)
+    else:
+        fingers.append(0)
+
+    # 4 Fingers: telunjuk, tengah, manis, kelingking
+    for tip, pip in [(8, 6), (12, 10), (16, 14), (20, 18)]:
+        if hand_landmarks.landmark[tip].y < hand_landmarks.landmark[pip].y:
+            fingers.append(1)
+        else:
+            fingers.append(0)
+
+    total_fingers = sum(fingers)
+
+    if total_fingers == 0:
+        return "Batu"
+    elif total_fingers == 2 and fingers[1] and fingers[2] and not fingers[3] and not fingers[4]:
+        return "Gunting"
+    elif total_fingers == 5:
+        return "Kertas"
+    else:
+        return "Tidak dikenali"
+
+# --- VideoProcessor pakai recv() ---
 class VideoProcessor(VideoTransformerBase):
     def __init__(self):
         self.gesture = None
@@ -68,36 +94,11 @@ class VideoProcessor(VideoTransformerBase):
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
                 self.mp_draw.draw_landmarks(img, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
-
-                fingers = []
-
-                # Thumb: bandingkan X, karena thumb ke samping
-                if hand_landmarks.landmark[4].x < hand_landmarks.landmark[3].x:
-                    fingers.append(1)
-                else:
-                    fingers.append(0)
-
-                # 4 fingers: telunjuk, tengah, manis, kelingking
-                for tip, pip in [(8, 6), (12, 10), (16, 14), (20, 18)]:
-                    fingers.append(1 if finger_open(hand_landmarks, tip, pip) else 0)
-
-                # Analisis jumlah jari terbuka
-                total_fingers = sum(fingers)
-
-                if total_fingers == 0:
-                    gesture = "Batu"
-                elif total_fingers == 2:
-                    gesture = "Gunting"
-                elif total_fingers == 5:
-                    gesture = "Kertas"
-                else:
-                    gesture = "Tidak dikenali"
+                gesture = detect_gesture(hand_landmarks)
 
         self.gesture = gesture
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-
 
 # --- WebRTC Streamer ---
 ctx = webrtc_streamer(
@@ -106,7 +107,7 @@ ctx = webrtc_streamer(
     media_stream_constraints={"video": True, "audio": False}
 )
 
-# --- LOGIKA AUTO-SUBMIT ---
+# --- Handle Auto Submit ---
 if ctx and ctx.video_processor:
     gesture_now = ctx.video_processor.gesture
 
@@ -129,7 +130,7 @@ if ctx and ctx.video_processor:
             st.session_state.detected_gesture = gesture_now
             st.session_state.gesture_start_time = time.time()
 
-# --- Tombol Manual Submit (Backup) ---
+# --- Tombol Manual Submit ---
 if not st.session_state.gesture_submitted and ctx and ctx.video_processor:
     if st.button("📤 Kirim Gerakan Manual"):
         gesture = ctx.video_processor.gesture
