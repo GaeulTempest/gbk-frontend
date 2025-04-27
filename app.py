@@ -13,16 +13,20 @@ st.title("🕹️ Gunting Batu Kertas - ONLINE")
 
 player = st.selectbox("Pilih peran", ["A", "B"])
 
-# Timer setup
+# Setup session_state untuk timer dan gesture
 if "start_time" not in st.session_state:
     st.session_state.start_time = time.time()
 
-# Hitung mundur
+if "gesture_submitted" not in st.session_state:
+    st.session_state.gesture_submitted = False
+
+# Timer calculation
 elapsed_time = int(time.time() - st.session_state.start_time)
 remaining_time = 30 - elapsed_time
 
-# Auto refresh tiap 1 detik
-st_autorefresh(interval=1000, limit=None, key="timer_refresh")
+# Auto refresh hanya jika gesture belum dikirim
+if not st.session_state.gesture_submitted:
+    st_autorefresh(interval=1000, limit=None, key="timer_refresh")
 
 # Progress bar
 progress = st.progress(0)
@@ -34,14 +38,14 @@ else:
     progress.progress(1.0)
     st.error("⏰ Waktu habis!")
     st.warning("Klik tombol di bawah ini untuk memulai ulang game.")
-
+    
     if st.button("🔄 Main Lagi"):
-        # Reset session_state dan reload app
+        # Reset semua state
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.experimental_rerun()
 
-    st.stop()  # Hentikan semua interaksi lainnya
+    st.stop()
 
 gesture_result = st.empty()
 
@@ -74,10 +78,8 @@ if st.button("📤 Kirim Gerakan"):
         try:
             response = requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture})
             if response.status_code == 200:
+                st.session_state.gesture_submitted = True  # <- Set flag gesture sudah dikirim
                 st.success(f"✅ Gerakan '{gesture}' berhasil dikirim sebagai Player {player}!")
-                # Reset timer setelah berhasil kirim
-                if "start_time" in st.session_state:
-                    del st.session_state["start_time"]
             else:
                 st.error(f"⚠️ Gagal mengirim: {response.json().get('error', 'Unknown error')}")
         except Exception as e:
