@@ -11,9 +11,9 @@ BASE_URL = "https://web-production-7e17f.up.railway.app"
 st.title("🕹️ Gunting Batu Kertas - ONLINE")
 
 player = st.selectbox("Pilih peran", ["A", "B"])
-st.session_state.player = player  # Simpan player di session_state
+st.session_state.player = player
 
-# Setup session_state untuk timer dan auto gesture
+# Setup session_state
 if "start_time" not in st.session_state:
     st.session_state.start_time = time.time()
 
@@ -23,11 +23,10 @@ if "gesture_submitted" not in st.session_state:
 if "auto_gesture_ready" not in st.session_state:
     st.session_state.auto_gesture_ready = False
 
-# Timer calculation
+# Timer
 elapsed_time = int(time.time() - st.session_state.start_time)
 remaining_time = 30 - elapsed_time
 
-# Auto refresh hanya kalau gesture belum dikirim
 if not st.session_state.gesture_submitted:
     st_autorefresh(interval=1000, limit=None, key="timer_refresh")
 
@@ -71,7 +70,7 @@ class VideoProcessor(VideoTransformerBase):
             if gesture == self.last_gesture:
                 if self.gesture_start_time and not self.confirmed:
                     elapsed = time.time() - self.gesture_start_time
-                    if elapsed > 5:
+                    if elapsed > 2:  # hanya 2 detik untuk auto-submit
                         st.session_state.auto_gesture_ready = True
                         st.session_state.auto_gesture_move = gesture
                         self.confirmed = True
@@ -96,13 +95,29 @@ if st.session_state.get('auto_gesture_ready', False):
             "move": st.session_state.get("auto_gesture_move", "Tidak dikenali")
         })
         if response.status_code == 200:
-            st.success(f"✅ Gesture '{st.session_state['auto_gesture_move']}' dikirim otomatis setelah stabil 5 detik!")
+            st.success(f"✅ Gesture '{st.session_state['auto_gesture_move']}' dikirim otomatis setelah stabil 2 detik!")
             st.session_state.gesture_submitted = True
-            st.session_state.auto_gesture_ready = False  # Reset flag
+            st.session_state.auto_gesture_ready = False
         else:
             st.error(f"⚠️ Gagal auto-submit: {response.json().get('error', 'Unknown error')}")
     except Exception as e:
         st.error(f"🚨 Error auto-submit gesture: {e}")
+
+# --- Tombol Kirim Gerakan Manual ---
+if st.button("📤 Kirim Gerakan Manual"):
+    gesture = ctx.video_processor.gesture if ctx.video_processor else None
+    if gesture in ["Batu", "Gunting", "Kertas"]:
+        try:
+            response = requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture})
+            if response.status_code == 200:
+                st.success(f"✅ Gesture '{gesture}' berhasil dikirim manual sebagai Player {player}!")
+                st.session_state.gesture_submitted = True
+            else:
+                st.error(f"⚠️ Gagal mengirim: {response.json().get('error', 'Unknown error')}")
+        except Exception as e:
+            st.error(f"🚨 Error mengirim gesture manual: {e}")
+    else:
+        st.warning("✋ Gesture belum dikenali. Pastikan tanganmu terlihat jelas.")
 
 # --- Tombol Lihat Hasil Pertandingan ---
 if st.button("📊 Lihat Hasil"):
