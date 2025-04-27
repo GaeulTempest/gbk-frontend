@@ -1,10 +1,10 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import cv2
-import requests
-import time
-from gesture_utils import get_finger_count
 import av
+import time
+import requests
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+import mediapipe as mp
 
 BASE_URL = "https://web-production-7e17f.up.railway.app"
 
@@ -50,20 +50,49 @@ gesture_result = st.empty()
 class VideoProcessor(VideoTransformerBase):
     def __init__(self):
         self.gesture = None
+        # Inisialisasi MediaPipe HANDS di sini
+        self.mp_hands = mp.solutions.hands
+        self.hands = self.mp_hands.Hands(static_image_mode=False, max_num_hands=1)
+        self.mp_draw = mp.solutions.drawing_utils
 
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
-        gesture, processed = get_finger_count(img)
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        if gesture:
-            cv2.putText(processed, f"{gesture}", (30, 60),
-                        cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 3)
+        results = self.hands.process(img_rgb)
+        gesture = None
+
+        if results.multi_hand_landmarks:
+            for hand_landmarks in results.multi_hand_landmarks:
+                self.mp_draw.draw_landmarks(img, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
+
+            # Logic sederhana gesture
+            hand = results.multi_hand_landmarks[0]
+            count = 0
+
+            # Thumb
+            if hand.landmark[4].x < hand.landmark[3].x:
+                count += 1
+            # 4 Fingers
+            for tip in [8, 12, 16, 20]:
+                if hand.landmark[tip].y < hand.landmark[tip - 2].y:
+                    count += 1
+
+            if count == 0:
+                gesture = "Batu"
+            elif count == 2:
+                gesture = "Gunting"
+            elif count == 5:
+                gesture = "Kertas"
+            else:
+                gesture = "Tidak dikenali"
+
         self.gesture = gesture
 
-        return av.VideoFrame.from_ndarray(processed, format="bgr24")
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 ctx = webrtc_streamer(
-    key="gbk",
+    key="handtracking",
     video_processor_factory=VideoProcessor,
     media_stream_constraints={"video": True, "audio": False}
 )
@@ -82,7 +111,7 @@ if ctx and ctx.video_processor:
                         "move": gesture_now
                     })
                     if response.status_code == 200:
-                        st.success(f"✅ Auto-submit sukses! Gerakan '{gesture_now}' dikirim!")
+                        st.success(f"✅ Auto-submit sukses! Gerakan '{gesture_now}' dikirim otomatis!")
                         st.session_state.gesture_submitted = True
                         ctx.stop()
                 except Exception as e:
