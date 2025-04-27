@@ -22,13 +22,10 @@ if "start_time" not in st.session_state:
 if "gesture_submitted" not in st.session_state:
     st.session_state.gesture_submitted = False
 
-if "detected_gesture" not in st.session_state:
-    st.session_state.detected_gesture = None
+if "current_gesture" not in st.session_state:
+    st.session_state.current_gesture = "Belum ada"
 
-if "gesture_start_time" not in st.session_state:
-    st.session_state.gesture_start_time = None
-
-# --- Progress Bar Timer ---
+# --- Timer dan Progress Bar ---
 elapsed_time = int(time.time() - st.session_state.start_time)
 remaining_time = 30 - elapsed_time
 progress = st.progress(0)
@@ -39,26 +36,24 @@ if remaining_time > 0:
 else:
     progress.progress(1.0)
     st.error("⏰ Waktu habis!")
-    st.warning("Klik tombol di bawah untuk memulai ulang game.")
+    st.warning("Klik tombol di bawah ini untuk memulai ulang game.")
     if st.button("🔄 Main Lagi"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.experimental_rerun()
     st.stop()
 
-gesture_result = st.empty()
-
 # --- Fungsi Deteksi Gesture ---
 def detect_gesture(hand_landmarks):
     fingers = []
 
-    # Thumb: cek apakah terbuka
+    # Thumb
     if hand_landmarks.landmark[4].x < hand_landmarks.landmark[3].x:
         fingers.append(1)
     else:
         fingers.append(0)
 
-    # 4 Fingers: telunjuk, tengah, manis, kelingking
+    # 4 Fingers
     for tip, pip in [(8, 6), (12, 10), (16, 14), (20, 18)]:
         if hand_landmarks.landmark[tip].y < hand_landmarks.landmark[pip].y:
             fingers.append(1)
@@ -76,10 +71,10 @@ def detect_gesture(hand_landmarks):
     else:
         return "Tidak dikenali"
 
-# --- VideoProcessor pakai recv() ---
+# --- VideoProcessor Class ---
 class VideoProcessor(VideoTransformerBase):
     def __init__(self):
-        self.gesture = None
+        self.gesture = "Belum ada"
         self.mp_hands = mp.solutions.hands
         self.hands = self.mp_hands.Hands(static_image_mode=False, max_num_hands=1)
         self.mp_draw = mp.solutions.drawing_utils
@@ -97,6 +92,7 @@ class VideoProcessor(VideoTransformerBase):
                 gesture = detect_gesture(hand_landmarks)
 
         self.gesture = gesture
+        st.session_state.current_gesture = self.gesture  # Update gesture di session_state
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
@@ -107,44 +103,26 @@ ctx = webrtc_streamer(
     media_stream_constraints={"video": True, "audio": False}
 )
 
-# --- Handle Auto Submit ---
-if ctx and ctx.video_processor:
-    gesture_now = ctx.video_processor.gesture
+# --- Tampilkan Label Gesture ---
+st.subheader("🖐️ Gerakan Terdeteksi:")
+st.success(f"👉 {st.session_state.current_gesture}")
 
-    if gesture_now in ["Batu", "Gunting", "Kertas"]:
-        if st.session_state.detected_gesture == gesture_now:
-            elapsed = time.time() - st.session_state.gesture_start_time
-            if elapsed >= 2 and not st.session_state.gesture_submitted:
+# --- Tombol Manual Submit ---
+if ctx and ctx.video_processor:
+    if not st.session_state.gesture_submitted:
+        if st.button("📤 Kirim Gerakan Manual"):
+            gesture = ctx.video_processor.gesture
+            if gesture in ["Batu", "Gunting", "Kertas"]:
                 try:
-                    response = requests.post(f"{BASE_URL}/submit", json={
-                        "player": st.session_state.get("player", "A"),
-                        "move": gesture_now
-                    })
+                    response = requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture})
                     if response.status_code == 200:
-                        st.success(f"✅ Auto-submit sukses! Gerakan '{gesture_now}' dikirim otomatis!")
+                        st.success(f"✅ Gerakan '{gesture}' berhasil dikirim manual!")
                         st.session_state.gesture_submitted = True
                         ctx.stop()
                 except Exception as e:
-                    st.error(f"🚨 Gagal auto-submit gesture: {e}")
-        else:
-            st.session_state.detected_gesture = gesture_now
-            st.session_state.gesture_start_time = time.time()
-
-# --- Tombol Manual Submit ---
-if not st.session_state.gesture_submitted and ctx and ctx.video_processor:
-    if st.button("📤 Kirim Gerakan Manual"):
-        gesture = ctx.video_processor.gesture
-        if gesture in ["Batu", "Gunting", "Kertas"]:
-            try:
-                response = requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture})
-                if response.status_code == 200:
-                    st.success(f"✅ Gerakan '{gesture}' berhasil dikirim manual!")
-                    st.session_state.gesture_submitted = True
-                    ctx.stop()
-            except Exception as e:
-                st.error(f"🚨 Error kirim gesture manual: {e}")
-        else:
-            st.warning("✋ Gesture belum dikenali. Pastikan tanganmu terlihat jelas.")
+                    st.error(f"🚨 Error kirim gesture manual: {e}")
+            else:
+                st.warning("✋ Gesture belum dikenali. Pastikan tanganmu terlihat jelas.")
 
 # --- Tombol Lihat Hasil Pertandingan ---
 if st.button("📊 Lihat Hasil"):
