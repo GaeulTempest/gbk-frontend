@@ -23,15 +23,14 @@ if "gesture_submitted" not in st.session_state:
 if "auto_gesture_ready" not in st.session_state:
     st.session_state.auto_gesture_ready = False
 
-if "camera_playing" not in st.session_state:
-    st.session_state.camera_playing = True  # Default assume on
+if "camera_stop_request" not in st.session_state:
+    st.session_state.camera_stop_request = False
 
 # Timer
 elapsed_time = int(time.time() - st.session_state.start_time)
 remaining_time = 30 - elapsed_time
 
-# Auto refresh hanya kalau gesture belum dikirim dan kamera aktif
-if not st.session_state.gesture_submitted and st.session_state.camera_playing:
+if not st.session_state.gesture_submitted and not st.session_state.camera_stop_request:
     st_autorefresh(interval=1000, limit=None, key="timer_refresh")
 
 # Progress bar
@@ -39,10 +38,10 @@ progress = st.progress(0)
 
 if remaining_time > 0:
     progress.progress((30 - remaining_time) / 30)
-    if st.session_state.camera_playing:
+    if not st.session_state.camera_stop_request:
         st.info(f"⏳ Sisa waktu: {remaining_time} detik (Kamera Aktif)")
     else:
-        st.info(f"⏸️ Kamera Dimatikan, Timer berhenti di {remaining_time} detik")
+        st.info(f"⏸️ Kamera dimatikan otomatis setelah submit gesture.")
 else:
     progress.progress(1.0)
     st.error("⏰ Waktu habis!")
@@ -94,43 +93,25 @@ ctx = webrtc_streamer(
     media_stream_constraints={"video": True, "audio": False}
 )
 
-# --- DETEKSI STATUS KAMERA ---
-if ctx.state.playing:
-    st.session_state.camera_playing = True
-else:
-    st.session_state.camera_playing = False
-
-# --- Auto Submit Gesture jika sudah siap ---
-if st.session_state.get('auto_gesture_ready', False) and st.session_state.camera_playing:
+# --- DETEKSI DAN EKSEKUSI AUTO SUBMIT ---
+if ctx and ctx.state.playing and st.session_state.get('auto_gesture_ready', False):
     try:
         response = requests.post(f"{BASE_URL}/submit", json={
             "player": st.session_state.get("player", "A"),
             "move": st.session_state.get("auto_gesture_move", "Tidak dikenali")
         })
         if response.status_code == 200:
-            st.success(f"✅ Gesture '{st.session_state['auto_gesture_move']}' dikirim otomatis setelah stabil 2 detik!")
+            st.success(f"✅ Gesture '{st.session_state['auto_gesture_move']}' berhasil dikirim otomatis!")
             st.session_state.gesture_submitted = True
             st.session_state.auto_gesture_ready = False
-        else:
-            st.error(f"⚠️ Gagal auto-submit: {response.json().get('error', 'Unknown error')}")
+            st.session_state.camera_stop_request = True  # Request stop kamera
     except Exception as e:
         st.error(f"🚨 Error auto-submit gesture: {e}")
 
-# --- Tombol Kirim Gerakan Manual ---
-if st.button("📤 Kirim Gerakan Manual"):
-    gesture = ctx.video_processor.gesture if ctx.video_processor else None
-    if gesture in ["Batu", "Gunting", "Kertas"]:
-        try:
-            response = requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture})
-            if response.status_code == 200:
-                st.success(f"✅ Gesture '{gesture}' berhasil dikirim manual sebagai Player {player}!")
-                st.session_state.gesture_submitted = True
-            else:
-                st.error(f"⚠️ Gagal mengirim: {response.json().get('error', 'Unknown error')}")
-        except Exception as e:
-            st.error(f"🚨 Error mengirim gesture manual: {e}")
-    else:
-        st.warning("✋ Gesture belum dikenali. Pastikan tanganmu terlihat jelas.")
+# --- MATIKAN KAMERA SECARA OTOMATIS ---
+if st.session_state.camera_stop_request:
+    if ctx and ctx.state.playing:
+        ctx.stop()
 
 # --- Tombol Lihat Hasil Pertandingan ---
 if st.button("📊 Lihat Hasil"):
@@ -143,4 +124,3 @@ if st.button("📊 Lihat Hasil"):
             st.warning("Menunggu lawan bermain...")
     except Exception as e:
         st.error(f"Error mengambil hasil dari server: {e}")
-
