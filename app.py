@@ -23,11 +23,15 @@ if "gesture_submitted" not in st.session_state:
 if "auto_gesture_ready" not in st.session_state:
     st.session_state.auto_gesture_ready = False
 
+if "camera_playing" not in st.session_state:
+    st.session_state.camera_playing = True  # Default assume on
+
 # Timer
 elapsed_time = int(time.time() - st.session_state.start_time)
 remaining_time = 30 - elapsed_time
 
-if not st.session_state.gesture_submitted:
+# Auto refresh hanya kalau gesture belum dikirim dan kamera aktif
+if not st.session_state.gesture_submitted and st.session_state.camera_playing:
     st_autorefresh(interval=1000, limit=None, key="timer_refresh")
 
 # Progress bar
@@ -35,7 +39,10 @@ progress = st.progress(0)
 
 if remaining_time > 0:
     progress.progress((30 - remaining_time) / 30)
-    st.info(f"⏳ Sisa waktu: {remaining_time} detik")
+    if st.session_state.camera_playing:
+        st.info(f"⏳ Sisa waktu: {remaining_time} detik (Kamera Aktif)")
+    else:
+        st.info(f"⏸️ Kamera Dimatikan, Timer berhenti di {remaining_time} detik")
 else:
     progress.progress(1.0)
     st.error("⏰ Waktu habis!")
@@ -70,7 +77,7 @@ class VideoProcessor(VideoTransformerBase):
             if gesture == self.last_gesture:
                 if self.gesture_start_time and not self.confirmed:
                     elapsed = time.time() - self.gesture_start_time
-                    if elapsed > 2:  # hanya 2 detik untuk auto-submit
+                    if elapsed > 2:  # 2 detik stabil
                         st.session_state.auto_gesture_ready = True
                         st.session_state.auto_gesture_move = gesture
                         self.confirmed = True
@@ -87,8 +94,14 @@ ctx = webrtc_streamer(
     media_stream_constraints={"video": True, "audio": False}
 )
 
+# --- DETEKSI STATUS KAMERA ---
+if ctx.state.playing:
+    st.session_state.camera_playing = True
+else:
+    st.session_state.camera_playing = False
+
 # --- Auto Submit Gesture jika sudah siap ---
-if st.session_state.get('auto_gesture_ready', False):
+if st.session_state.get('auto_gesture_ready', False) and st.session_state.camera_playing:
     try:
         response = requests.post(f"{BASE_URL}/submit", json={
             "player": st.session_state.get("player", "A"),
@@ -125,8 +138,4 @@ if st.button("📊 Lihat Hasil"):
         res = requests.get(f"{BASE_URL}/result").json()
         if "result" in res:
             st.write(f"🧍 Player A: {res['A']} | 🧍 Player B: {res['B']}")
-            st.success(f"🏆 Hasil: {res['result']}")
-        else:
-            st.warning("Menunggu lawan bermain...")
-    except Exception as e:
-        st.error(f"Error mengambil hasil dari server: {e}")
+            st.success(f"🏆 Hasil: {res['result']}"
