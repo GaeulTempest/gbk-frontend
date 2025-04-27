@@ -5,6 +5,11 @@ import requests
 from gesture_utils import get_finger_count
 import av
 import time
+from streamlit_autorefresh import st_autorefresh
+
+# Auto refresh tiap 1 detik
+count = st_autorefresh(interval=1000, limit=None, key="timer_refresh")
+
 
 BASE_URL = "https://web-production-7e17f.up.railway.app"
 st.title("🕹️ Gunting Batu Kertas - ONLINE")
