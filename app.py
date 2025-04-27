@@ -111,8 +111,9 @@ if ctx and ctx.video_processor:
                 response = requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture})
                 if response.status_code == 200:
                     st.success(f"✅ Gerakan '{gesture}' berhasil dikirim manual!")
-                    ctx.stop()
+                    ctx.state.playing = False  # <-- Ini yang bener, bukan ctx.stop()
             except Exception as e:
                 st.error(f"🚨 Error kirim gesture manual: {e}")
         else:
             st.warning("✋ Gesture belum dikenali. Pastikan tanganmu terlihat jelas.")
+
