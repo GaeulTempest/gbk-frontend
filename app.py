@@ -5,28 +5,18 @@ import time
 import requests
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import mediapipe as mp
-from streamlit_autorefresh import st_autorefresh
 
-# URL backend API server kamu
 BASE_URL = "https://web-production-7e17f.up.railway.app"
 
 st.title("🕹️ Gunting Batu Kertas - ONLINE")
 
-# --- Pilih Peran ---
 player = st.selectbox("Pilih peran", ["A", "B"])
 st.session_state.player = player
 
-# --- Setup Session State ---
+# --- Timer Progress Bar ---
 if "start_time" not in st.session_state:
     st.session_state.start_time = time.time()
 
-if "gesture_submitted" not in st.session_state:
-    st.session_state.gesture_submitted = False
-
-if "current_gesture" not in st.session_state:
-    st.session_state.current_gesture = "Belum ada"
-
-# --- Timer dan Progress Bar ---
 elapsed_time = int(time.time() - st.session_state.start_time)
 remaining_time = 30 - elapsed_time
 progress = st.progress(0)
@@ -37,15 +27,11 @@ if remaining_time > 0:
 else:
     progress.progress(1.0)
     st.error("⏰ Waktu habis!")
-    st.warning("Klik tombol di bawah ini untuk memulai ulang game.")
     if st.button("🔄 Main Lagi"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.experimental_rerun()
     st.stop()
-
-# --- Auto-refresh setiap 1 detik (saat kamera aktif) ---
-st_autorefresh(interval=1000, limit=None, key="refresh_key")
 
 # --- Fungsi Deteksi Gesture ---
 def detect_gesture(hand_landmarks):
@@ -75,7 +61,7 @@ def detect_gesture(hand_landmarks):
     else:
         return "Tidak dikenali"
 
-# --- VideoProcessor Class ---
+# --- Video Processor pakai recv() ---
 class VideoProcessor(VideoTransformerBase):
     def __init__(self):
         self.gesture = "Belum ada"
@@ -88,57 +74,45 @@ class VideoProcessor(VideoTransformerBase):
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         results = self.hands.process(img_rgb)
-        gesture = "Tidak dikenali"
 
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
                 self.mp_draw.draw_landmarks(img, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
-                gesture = detect_gesture(hand_landmarks)
-
-        self.gesture = gesture
-        st.session_state.current_gesture = self.gesture
+                self.gesture = detect_gesture(hand_landmarks)
+        else:
+            self.gesture = "Tidak dikenali"
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-# --- WebRTC Streamer ---
+# --- Streamer ---
 ctx = webrtc_streamer(
     key="handtracking",
     video_processor_factory=VideoProcessor,
     media_stream_constraints={"video": True, "audio": False}
 )
 
-# --- Tampilkan Text Real-time ---
+# --- Tampilkan Gesture Secara Langsung ---
 if ctx and ctx.state.playing:
     st.subheader("📸 Kamera Aktif!")
-    st.success(f"🖐️ Gerakan Terdeteksi: **{st.session_state.current_gesture}**")
+    if ctx.video_processor:
+        gesture_now = ctx.video_processor.gesture
+        st.success(f"🖐️ Gerakan Terdeteksi: **{gesture_now}**")
+    else:
+        st.warning("🔄 Mendeteksi gerakan...")
 else:
     st.warning("🚫 Kamera belum aktif atau sudah berhenti.")
 
 # --- Tombol Manual Submit ---
 if ctx and ctx.video_processor:
-    if not st.session_state.gesture_submitted:
-        if st.button("📤 Kirim Gerakan Manual"):
-            gesture = ctx.video_processor.gesture
-            if gesture in ["Batu", "Gunting", "Kertas"]:
-                try:
-                    response = requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture})
-                    if response.status_code == 200:
-                        st.success(f"✅ Gerakan '{gesture}' berhasil dikirim manual!")
-                        st.session_state.gesture_submitted = True
-                        ctx.stop()
-                except Exception as e:
-                    st.error(f"🚨 Error kirim gesture manual: {e}")
-            else:
-                st.warning("✋ Gesture belum dikenali. Pastikan tanganmu terlihat jelas.")
-
-# --- Tombol Lihat Hasil Pertandingan ---
-if st.button("📊 Lihat Hasil"):
-    try:
-        res = requests.get(f"{BASE_URL}/result").json()
-        if "result" in res:
-            st.write(f"🧍 Player A: {res['A']} | 🧍 Player B: {res['B']}")
-            st.success(f"🏆 Hasil: {res['result']}")
+    if st.button("📤 Kirim Gerakan Manual"):
+        gesture = ctx.video_processor.gesture
+        if gesture in ["Batu", "Gunting", "Kertas"]:
+            try:
+                response = requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture})
+                if response.status_code == 200:
+                    st.success(f"✅ Gerakan '{gesture}' berhasil dikirim manual!")
+                    ctx.stop()
+            except Exception as e:
+                st.error(f"🚨 Error kirim gesture manual: {e}")
         else:
-            st.warning("Menunggu lawan bermain...")
-    except Exception as e:
-        st.error(f"Error mengambil hasil dari server: {e}")
+            st.warning("✋ Gesture belum dikenali. Pastikan tanganmu terlihat jelas.")
