@@ -4,7 +4,7 @@ import cv2
 import requests
 import time
 from gesture_utils import get_finger_count
-from streamlit_autorefresh import st_autorefresh
+import av
 
 BASE_URL = "https://web-production-7e17f.up.railway.app"
 
@@ -20,42 +20,28 @@ if "start_time" not in st.session_state:
 if "gesture_submitted" not in st.session_state:
     st.session_state.gesture_submitted = False
 
-if "auto_gesture_ready" not in st.session_state:
-    st.session_state.auto_gesture_ready = False
+if "detected_gesture" not in st.session_state:
+    st.session_state.detected_gesture = None
 
-if "camera_stop_request" not in st.session_state:
-    st.session_state.camera_stop_request = False
+if "gesture_start_time" not in st.session_state:
+    st.session_state.gesture_start_time = None
 
-if "force_rerun" not in st.session_state:
-    st.session_state.force_rerun = False
-
-# Timer
+# Progress bar untuk sisa waktu
 elapsed_time = int(time.time() - st.session_state.start_time)
 remaining_time = 30 - elapsed_time
-
-# Auto refresh untuk timer
-if not st.session_state.gesture_submitted and not st.session_state.camera_stop_request:
-    st_autorefresh(interval=1000, limit=None, key="timer_refresh")
-
-# Progress bar
 progress = st.progress(0)
 
 if remaining_time > 0:
     progress.progress((30 - remaining_time) / 30)
-    if not st.session_state.camera_stop_request:
-        st.info(f"⏳ Sisa waktu: {remaining_time} detik (Kamera Aktif)")
-    else:
-        st.info(f"⏸️ Kamera dimatikan otomatis setelah submit gesture.")
+    st.info(f"⏳ Sisa waktu: {remaining_time} detik")
 else:
     progress.progress(1.0)
     st.error("⏰ Waktu habis!")
     st.warning("Klik tombol di bawah ini untuk memulai ulang game.")
-
     if st.button("🔄 Main Lagi"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.experimental_rerun()
-
     st.stop()
 
 gesture_result = st.empty()
@@ -63,10 +49,7 @@ gesture_result = st.empty()
 # --- Kamera WebRTC dan Gesture Processor ---
 class VideoProcessor(VideoTransformerBase):
     def __init__(self):
-        self.gesture = None
-        self.last_gesture = None
-        self.gesture_start_time = None
-        self.confirmed = False
+        self.current_gesture = None
 
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
@@ -75,53 +58,54 @@ class VideoProcessor(VideoTransformerBase):
         if gesture:
             cv2.putText(processed, f"{gesture}", (30, 60),
                         cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 3)
-            self.gesture = gesture
+            self.current_gesture = gesture
 
-            if gesture == self.last_gesture:
-                if self.gesture_start_time and not self.confirmed:
-                    elapsed = time.time() - self.gesture_start_time
-                    if elapsed > 2:
-                        st.session_state.auto_gesture_ready = True
-                        st.session_state.auto_gesture_move = gesture
-                        st.session_state.force_rerun = True  # Minta rerun app
-                        self.confirmed = True
-            else:
-                self.last_gesture = gesture
-                self.gesture_start_time = time.time()
-                self.confirmed = False
-
-        return processed
+        return av.VideoFrame.from_ndarray(processed, format="bgr24")
 
 ctx = webrtc_streamer(
-    key="gbk",
+    key="example",
     video_processor_factory=VideoProcessor,
     media_stream_constraints={"video": True, "audio": False}
 )
 
-# --- PAKSA RERUN KETIKA GESTURE READY ---
-if st.session_state.get("force_rerun", False):
-    st.session_state.force_rerun = False
-    st.experimental_rerun()
+# --- Handle Gesture Auto Submit ---
+if ctx.state.playing and ctx.video_processor:
+    detected_gesture = ctx.video_processor.current_gesture
 
-# --- DETEKSI DAN EKSEKUSI AUTO SUBMIT ---
-if ctx and ctx.state.playing and st.session_state.get('auto_gesture_ready', False):
-    try:
-        response = requests.post(f"{BASE_URL}/submit", json={
-            "player": st.session_state.get("player", "A"),
-            "move": st.session_state.get("auto_gesture_move", "Tidak dikenali")
-        })
-        if response.status_code == 200:
-            st.success(f"✅ Gesture '{st.session_state['auto_gesture_move']}' berhasil dikirim otomatis!")
-            st.session_state.gesture_submitted = True
-            st.session_state.auto_gesture_ready = False
-            st.session_state.camera_stop_request = True  # Request stop kamera
-    except Exception as e:
-        st.error(f"🚨 Error auto-submit gesture: {e}")
+    if detected_gesture in ["Batu", "Gunting", "Kertas"]:
+        if st.session_state.detected_gesture == detected_gesture:
+            elapsed = time.time() - st.session_state.gesture_start_time
+            if elapsed >= 2 and not st.session_state.gesture_submitted:
+                try:
+                    response = requests.post(f"{BASE_URL}/submit", json={
+                        "player": st.session_state.get("player", "A"),
+                        "move": detected_gesture
+                    })
+                    if response.status_code == 200:
+                        st.success(f"✅ Auto-submit sukses! Gerakan '{detected_gesture}' dikirim!")
+                        st.session_state.gesture_submitted = True
+                        ctx.stop()
+                except Exception as e:
+                    st.error(f"🚨 Gagal auto-submit gesture: {e}")
+        else:
+            st.session_state.detected_gesture = detected_gesture
+            st.session_state.gesture_start_time = time.time()
 
-# --- MATIKAN KAMERA SECARA OTOMATIS ---
-if st.session_state.camera_stop_request:
-    if ctx and ctx.state.playing:
-        ctx.stop()
+# --- Tombol Manual Submit ---
+if not st.session_state.gesture_submitted and ctx.state.playing:
+    if st.button("📤 Kirim Gerakan Manual"):
+        gesture = ctx.video_processor.current_gesture if ctx.video_processor else None
+        if gesture in ["Batu", "Gunting", "Kertas"]:
+            try:
+                response = requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture})
+                if response.status_code == 200:
+                    st.success(f"✅ Gerakan '{gesture}' berhasil dikirim manual!")
+                    st.session_state.gesture_submitted = True
+                    ctx.stop()
+            except Exception as e:
+                st.error(f"🚨 Error kirim gesture manual: {e}")
+        else:
+            st.warning("✋ Gesture belum dikenali. Pastikan tanganmu terlihat jelas.")
 
 # --- Tombol Lihat Hasil Pertandingan ---
 if st.button("📊 Lihat Hasil"):
