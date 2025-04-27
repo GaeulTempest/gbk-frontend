@@ -92,7 +92,7 @@ class VideoProcessor(VideoTransformerBase):
                 gesture = detect_gesture(hand_landmarks)
 
         self.gesture = gesture
-        st.session_state.current_gesture = self.gesture  # Update gesture di session_state
+        st.session_state.current_gesture = self.gesture  # Update gesture realtime
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
@@ -103,9 +103,12 @@ ctx = webrtc_streamer(
     media_stream_constraints={"video": True, "audio": False}
 )
 
-# --- Tampilkan Label Gesture ---
-st.subheader("🖐️ Gerakan Terdeteksi:")
-st.success(f"👉 {st.session_state.current_gesture}")
+# --- Tampilkan Text Real-time ---
+if ctx.state.playing:
+    st.subheader("📸 Kamera Aktif!")
+    st.success(f"🖐️ Gerakan Terdeteksi: **{st.session_state.current_gesture}**")
+else:
+    st.warning("🚫 Kamera belum aktif atau sudah berhenti.")
 
 # --- Tombol Manual Submit ---
 if ctx and ctx.video_processor:
