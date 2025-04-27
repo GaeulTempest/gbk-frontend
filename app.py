@@ -22,13 +22,14 @@ remaining_time = 30 - elapsed_time
 # Progress bar
 progress = st.progress(0)
 if remaining_time > 0:
-    # Progress bar akan semakin penuh seiring habisnya waktu
     progress.progress((30 - remaining_time) / 30)
     st.info(f"⏳ Sisa waktu: {remaining_time} detik")
 else:
     progress.progress(1.0)
-    st.error("⏰ Waktu habis! Anda tidak dapat mengirim gesture.")
-    st.stop()  # Hentikan seluruh komponen Streamlit setelah waktu habis
+    st.error("⏰ Waktu habis! Halaman akan refresh otomatis.")
+    
+    # Delay sedikit lalu refresh halaman
+    st.experimental_rerun()
 
 gesture_result = st.empty()
 
