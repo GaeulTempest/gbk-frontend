@@ -7,22 +7,23 @@ import av
 import time
 from streamlit_autorefresh import st_autorefresh
 
-# Auto refresh tiap 1 detik
-count = st_autorefresh(interval=1000, limit=None, key="timer_refresh")
-
-
 BASE_URL = "https://web-production-7e17f.up.railway.app"
+
 st.title("🕹️ Gunting Batu Kertas - ONLINE")
 
 player = st.selectbox("Pilih peran", ["A", "B"])
 
-# Inisialisasi timer di session_state
+# Timer setup
 if "start_time" not in st.session_state:
     st.session_state.start_time = time.time()
 
 # Hitung mundur
 elapsed_time = int(time.time() - st.session_state.start_time)
 remaining_time = 30 - elapsed_time
+
+# Auto refresh tiap 1 detik selama masih ada waktu
+if remaining_time > 0:
+    st_autorefresh(interval=1000, limit=None, key="timer_refresh")
 
 # Progress bar
 progress = st.progress(0)
@@ -31,13 +32,12 @@ if remaining_time > 0:
     st.info(f"⏳ Sisa waktu: {remaining_time} detik")
 else:
     progress.progress(1.0)
-    st.error("⏰ Waktu habis! Halaman akan refresh otomatis.")
-    
-    # Delay sedikit lalu refresh halaman
-    st.experimental_rerun()
+    st.error("⏰ Waktu habis! Silakan refresh halaman untuk memulai ulang.")
+    st.stop()  # Hentikan semua interaksi tanpa error
 
 gesture_result = st.empty()
 
+# Kamera WebRTC
 class VideoProcessor(VideoTransformerBase):
     def __init__(self):
         self.gesture = None
@@ -59,7 +59,7 @@ ctx = webrtc_streamer(
     media_stream_constraints={"video": True, "audio": False}
 )
 
-# Tombol kirim gesture
+# Tombol Kirim Gesture
 if st.button("📤 Kirim Gerakan"):
     gesture = ctx.video_processor.gesture if ctx.video_processor else None
     if gesture in ["Batu", "Gunting", "Kertas"]:
@@ -71,7 +71,7 @@ if st.button("📤 Kirim Gerakan"):
     else:
         st.warning("Gesture belum dikenali")
 
-# Tombol lihat hasil
+# Tombol Lihat Hasil
 if st.button("📊 Lihat Hasil"):
     try:
         res = requests.get(f"{BASE_URL}/result").json()
