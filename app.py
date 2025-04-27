@@ -139,3 +139,8 @@ if st.button("📊 Lihat Hasil"):
         if "result" in res:
             st.write(f"🧍 Player A: {res['A']} | 🧍 Player B: {res['B']}")
             st.success(f"🏆 Hasil: {res['result']}")
+        else:
+            st.warning("Menunggu lawan bermain...")
+    except Exception as e:
+        st.error(f"Error mengambil hasil dari server: {e}")
+
