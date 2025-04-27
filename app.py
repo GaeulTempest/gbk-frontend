@@ -4,11 +4,32 @@ import cv2
 import requests
 from gesture_utils import get_finger_count
 import av
+import time
 
 BASE_URL = "https://web-production-7e17f.up.railway.app"
 st.title("🕹️ Gunting Batu Kertas - ONLINE")
 
 player = st.selectbox("Pilih peran", ["A", "B"])
+
+# Inisialisasi timer di session_state
+if "start_time" not in st.session_state:
+    st.session_state.start_time = time.time()
+
+# Hitung mundur
+elapsed_time = int(time.time() - st.session_state.start_time)
+remaining_time = 30 - elapsed_time
+
+# Progress bar
+progress = st.progress(0)
+if remaining_time > 0:
+    # Progress bar akan semakin penuh seiring habisnya waktu
+    progress.progress((30 - remaining_time) / 30)
+    st.info(f"⏳ Sisa waktu: {remaining_time} detik")
+else:
+    progress.progress(1.0)
+    st.error("⏰ Waktu habis! Anda tidak dapat mengirim gesture.")
+    st.stop()  # Hentikan seluruh komponen Streamlit setelah waktu habis
+
 gesture_result = st.empty()
 
 class VideoProcessor(VideoTransformerBase):
