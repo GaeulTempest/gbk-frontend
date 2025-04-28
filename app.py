@@ -9,10 +9,10 @@ import mediapipe as mp
 # URL backend
 BASE_URL = "https://web-production-7e17f.up.railway.app"
 
-# Set page config
+# Page config
 st.set_page_config(page_title="✌️ Gunting Batu Kertas Online", page_icon="🎮")
 
-# CSS Styling
+# Styling
 st.markdown("""
     <style>
     .title {font-size: 48px; color: #ff4b4b; text-align: center; font-weight: bold;}
@@ -24,7 +24,7 @@ st.markdown("""
 st.markdown('<div class="title">Gunting Batu Kertas</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Multiplayer Online Game 🎮</div>', unsafe_allow_html=True)
 
-# Session State
+# Session states
 if "gesture_sent" not in st.session_state:
     st.session_state.gesture_sent = False
 if "result_shown" not in st.session_state:
@@ -34,7 +34,7 @@ if "result_data" not in st.session_state:
 if "countdown_started" not in st.session_state:
     st.session_state.countdown_started = False
 
-# Deteksi Gesture
+# Gesture detection
 def detect_gesture(hand_landmarks, handedness):
     fingers = []
     if handedness == "Right":
@@ -78,17 +78,17 @@ class VideoProcessor(VideoTransformerBase):
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-# Reset Semua State
+# Reset all states
 def reset_all_state():
     st.session_state.gesture_sent = False
     st.session_state.result_shown = False
     st.session_state.result_data = None
     st.session_state.countdown_started = False
 
-# --- Main Tabs ---
+# --- Tabs ---
 tabs = st.tabs(["🚀 Standby", "🎮 Game"])
 
-with tabs[0]:
+with tabs[0]:  # Standby Tab
     player = st.selectbox("Pilih peran kamu:", ["A", "B"])
 
     try:
@@ -105,7 +105,7 @@ with tabs[0]:
 
     st.info(f"👥 Pemain Standby: {', '.join(ready_players) if ready_players else 'Belum ada'}")
 
-    # --- Fix tombol standby berdasarkan server ---
+    # --- Tombol Standby HANYA muncul kalau server belum ready
     player_ready_key = f"{player}_ready"
     if not moves.get(player_ready_key):
         if st.button("🚀 Klik untuk Standby"):
@@ -120,7 +120,7 @@ with tabs[0]:
     else:
         st.success("✅ Kamu sudah standby dan siap bermain!")
 
-with tabs[1]:
+with tabs[1]:  # Game Tab
     if not (moves.get("A_ready") and moves.get("B_ready")):
         st.warning("⏳ Menunggu semua pemain standby terlebih dahulu...")
     else:
