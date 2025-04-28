@@ -92,7 +92,7 @@ def reset_all_state():
 # --- Main Tabs ---
 tabs = st.tabs(["🚀 Standby", "🎮 Game"])
 
-with tabs[0]:
+with tabs[0]:  # Tab Standby
     player = st.selectbox("Pilih peran kamu:", ["A", "B"])
 
     try:
@@ -121,7 +121,7 @@ with tabs[0]:
             except Exception as e:
                 st.error(f"🚨 Error standby: {e}")
 
-with tabs[1]:
+with tabs[1]:  # Tab Game
     if not (moves.get("A_ready") and moves.get("B_ready")):
         st.warning("⏳ Menunggu semua pemain standby terlebih dahulu...")
     else:
@@ -166,7 +166,7 @@ with tabs[1]:
             else:
                 st.warning("🚫 Kamera belum aktif.")
 
-        # Setelah Kirim Gesture
+        # Setelah kirim gesture dan dapat hasil
         if st.session_state.gesture_sent and not st.session_state.result_shown:
             with st.spinner("⏳ Menunggu hasil pertandingan..."):
                 while True:
@@ -181,7 +181,7 @@ with tabs[1]:
                     time.sleep(2)
                 st.rerun()
 
-        # Tampilkan hasil
+        # Menampilkan hasil pertandingan
         if st.session_state.result_shown and st.session_state.result_data:
             result = st.session_state.result_data
             winner = result["result"]
@@ -211,27 +211,24 @@ with tabs[1]:
             except Exception as e:
                 st.error(f"❌ Gagal mengambil statistik: {e}")
 
-# Setelah tampilkan hasil game:
-if st.button("🔄 Main Lagi"):
-    try:
-        requests.post(f"{BASE_URL}/reset")
-    except:
-        pass
-    
-    reset_all_state()
-    
-    # --- Otomatis standby lagi setelah reset
-    try:
-        standby_payload = {"player": player}
-        response = requests.post(f"{BASE_URL}/standby", json=standby_payload)
-        if response.status_code == 200:
-            st.success("✅ Kamu otomatis standby lagi setelah reset!")
-            st.session_state.standby = True
-        else:
-            st.warning("⚠️ Gagal standby ulang, klik manual di tab Standby.")
-    except Exception as e:
-        st.error(f"❌ Error standby ulang: {e}")
-    
-    st.rerun()
+            # Tombol Main Lagi
+            if st.button("🔄 Main Lagi"):
+                try:
+                    requests.post(f"{BASE_URL}/reset")
+                except:
+                    pass
+                reset_all_state()
 
+                # Auto Standby lagi
+                try:
+                    standby_payload = {"player": player}
+                    response = requests.post(f"{BASE_URL}/standby", json=standby_payload)
+                    if response.status_code == 200:
+                        st.success("✅ Kamu otomatis standby lagi setelah reset!")
+                        st.session_state.standby = True
+                    else:
+                        st.warning("⚠️ Gagal standby ulang, klik manual.")
+                except Exception as e:
+                    st.error(f"❌ Error standby ulang: {e}")
 
+                st.rerun()
