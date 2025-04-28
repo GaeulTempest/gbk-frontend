@@ -119,7 +119,7 @@ else:
     if st.button("🔄 Main Lagi"):
         requests.post(f"{BASE_URL}/reset")
         reset_all_state()
-        st.experimental_rerun()
+        st.rerun()
     st.stop()
 
 # --- Stream Kamera ---
