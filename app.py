@@ -25,8 +25,6 @@ st.markdown('<div class="title">Gunting Batu Kertas</div>', unsafe_allow_html=Tr
 st.markdown('<div class="subtitle">Multiplayer Online Game 🎮</div>', unsafe_allow_html=True)
 
 # Session State
-if "standby" not in st.session_state:
-    st.session_state.standby = False
 if "gesture_sent" not in st.session_state:
     st.session_state.gesture_sent = False
 if "result_shown" not in st.session_state:
@@ -82,7 +80,6 @@ class VideoProcessor(VideoTransformerBase):
 
 # Reset Semua State
 def reset_all_state():
-    st.session_state.standby = False
     st.session_state.gesture_sent = False
     st.session_state.result_shown = False
     st.session_state.result_data = None
@@ -108,17 +105,20 @@ with tabs[0]:
 
     st.info(f"👥 Pemain Standby: {', '.join(ready_players) if ready_players else 'Belum ada'}")
 
-    if not st.session_state.standby:
+    # --- Fix tombol standby berdasarkan server ---
+    player_ready_key = f"{player}_ready"
+    if not moves.get(player_ready_key):
         if st.button("🚀 Klik untuk Standby"):
             try:
                 response = requests.post(f"{BASE_URL}/standby", json={"player": player})
                 if response.status_code == 200:
                     st.success("✅ Kamu sudah standby!")
-                    st.session_state.standby = True
                 else:
                     st.error("❌ Gagal standby.")
             except Exception as e:
                 st.error(f"🚨 Error standby: {e}")
+    else:
+        st.success("✅ Kamu sudah standby dan siap bermain!")
 
 with tabs[1]:
     if not (moves.get("A_ready") and moves.get("B_ready")):
@@ -216,4 +216,3 @@ with tabs[1]:
 
                 reset_all_state()
                 st.info("🚀 Silakan klik tombol Standby lagi untuk memulai permainan baru.")
-
