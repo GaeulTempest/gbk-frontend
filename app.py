@@ -6,30 +6,27 @@ import requests
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import mediapipe as mp
 
-BASE_URL = "https://web-production-7e17f.up.railway.app"  # Sesuaikan URL backend
+BASE_URL = "https://web-production-7e17f.up.railway.app"  # Ganti sesuai alamat backend kamu
 
 st.title("🕹️ Gunting Batu Kertas - ONLINE")
 
 player = st.selectbox("Pilih peran", ["A", "B"])
-st.session_state.player = player
 
 # Session State Setup
 if "standby" not in st.session_state:
     st.session_state.standby = False
 if "game_started" not in st.session_state:
     st.session_state.game_started = False
+if "start_time" not in st.session_state:
+    st.session_state.start_time = None
 
 # --- Fungsi Deteksi Gesture ---
 def detect_gesture(hand_landmarks, handedness):
     fingers = []
-
-    # Thumb
     if handedness == "Right":
         fingers.append(1 if hand_landmarks.landmark[4].x < hand_landmarks.landmark[3].x else 0)
     else:
         fingers.append(1 if hand_landmarks.landmark[4].x > hand_landmarks.landmark[3].x else 0)
-
-    # 4 Fingers
     for tip in [8, 12, 16, 20]:
         fingers.append(1 if hand_landmarks.landmark[tip].y < hand_landmarks.landmark[tip - 2].y else 0)
 
@@ -56,7 +53,6 @@ class VideoProcessor(VideoTransformerBase):
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
         results = self.hands.process(img_rgb)
 
         if results.multi_hand_landmarks and results.multi_handedness:
@@ -69,24 +65,15 @@ class VideoProcessor(VideoTransformerBase):
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-# --- Tombol Standby ---
-if not st.session_state.standby:
-    if st.button("🚀 Standby Siap Main"):
-        try:
-            response = requests.post(f"{BASE_URL}/standby", json={"player": player})
-            if response.status_code == 200:
-                st.session_state.standby = True
-                st.success("✅ Kamu sudah standby!")
-            else:
-                st.error("❌ Gagal standby.")
-        except Exception as e:
-            st.error(f"🚨 Error saat standby: {e}")
+# --- Fungsi Reset Semua Session State ---
+def reset_all_state():
+    st.session_state.standby = False
+    st.session_state.game_started = False
+    st.session_state.start_time = None
 
-# --- Cek Status Standby Semua Pemain ---
-status_info = requests.get(f"{BASE_URL}/result").json()
+# --- Check Siapa yang Standby ---
+moves = requests.get(f"{BASE_URL}/get_moves").json()
 
-# Tampilkan status siapa yang sudah ready
-moves = requests.get(f"{BASE_URL}/get_moves").json()  # Kita perlu buatkan endpoint ini di backend (sebentar lagi)
 ready_players = []
 if moves.get("A_ready"):
     ready_players.append("Player A")
@@ -95,31 +82,43 @@ if moves.get("B_ready"):
 
 st.info(f"👥 Pemain yang sudah siap: {', '.join(ready_players) if ready_players else 'Belum ada'}")
 
-# --- Kalau belum kedua pemain standby, kasih warning ---
+# --- Tombol Standby ---
+if not st.session_state.standby:
+    if st.button("🚀 Standby Siap Main"):
+        try:
+            response = requests.post(f"{BASE_URL}/standby", json={"player": player})
+            if response.status_code == 200:
+                st.success("✅ Kamu sudah standby!")
+                st.session_state.standby = True
+            else:
+                st.error("❌ Gagal standby.")
+        except Exception as e:
+            st.error(f"🚨 Error saat standby: {e}")
+
+# --- Cek Semua Pemain Sudah Siap ---
 if not (moves.get("A_ready") and moves.get("B_ready")):
     st.warning("⏳ Menunggu semua pemain standby...")
     st.stop()
 
-# --- Kalau sudah dua-duanya standby, mulai game! ---
+# --- Mulai Game Setelah Siap ---
 if not st.session_state.game_started:
     st.session_state.start_time = time.time()
     st.session_state.game_started = True
 
-# --- Timer Progress Bar ---
+# --- Timer Progress 60 Detik ---
 elapsed_time = int(time.time() - st.session_state.start_time)
-remaining_time = 30 - elapsed_time
+remaining_time = 60 - elapsed_time
 progress = st.progress(0)
 
 if remaining_time > 0:
-    progress.progress(elapsed_time / 30)
+    progress.progress(elapsed_time / 60)
     st.info(f"⏳ Sisa waktu: {remaining_time} detik")
 else:
     progress.progress(1.0)
-    st.error("⏰ Waktu habis!")
+    st.error("⏰ Waktu habis! Game selesai.")
     if st.button("🔄 Main Lagi"):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
         requests.post(f"{BASE_URL}/reset")
+        reset_all_state()
         st.experimental_rerun()
     st.stop()
 
@@ -130,7 +129,7 @@ ctx = webrtc_streamer(
     media_stream_constraints={"video": True, "audio": False}
 )
 
-# --- Deteksi Gesture dan Submit ---
+# --- Deteksi Gesture dan Kirim Move ---
 if ctx and ctx.state.playing:
     st.subheader("📸 Kamera Aktif!")
     if ctx.video_processor:
