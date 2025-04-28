@@ -6,12 +6,12 @@ import av
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import mediapipe as mp
 
-BASE_URL = "https://web-production-7e17f.up.railway.app"  # ganti sesuai servermu
+BASE_URL = "https://web-production-7e17f.up.railway.app"
 
-# Config halaman
+# Setup page
 st.set_page_config(page_title="✌️ Gunting Batu Kertas Online", page_icon="🎮")
 
-# Styling sederhana
+# Styling
 st.markdown("""
     <style>
     .title {font-size: 45px; color: #ff4b4b; text-align: center; font-weight: bold;}
@@ -22,7 +22,7 @@ st.markdown("""
 st.markdown('<div class="title">Gunting Batu Kertas</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Multiplayer Online Game 🎮</div>', unsafe_allow_html=True)
 
-# Session state init
+# Session states
 if "gesture_sent" not in st.session_state:
     st.session_state.gesture_sent = False
 if "result_shown" not in st.session_state:
@@ -84,16 +84,16 @@ def reset_all_state():
     st.session_state.countdown_started = False
     st.session_state.manual_mode = False
 
-# --- Tabs ---
+# Tabs
 tabs = st.tabs(["🚀 Standby", "🎮 Game"])
 
-with tabs[0]:
+with tabs[0]:  # Standby
     player = st.selectbox("Pilih peran kamu:", ["A", "B"])
 
     try:
         moves = requests.get(f"{BASE_URL}/get_moves").json()
     except Exception as e:
-        st.error(f"Gagal ambil data server: {e}")
+        st.error(f"🔌 Gagal ambil data server: {e}")
         moves = {}
 
     ready_players = []
@@ -111,41 +111,85 @@ with tabs[0]:
                 requests.post(f"{BASE_URL}/standby", json={"player": player})
                 st.success("✅ Kamu sudah ready!")
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"❌ Error standby: {e}")
     else:
-        st.success("✅ Kamu sudah ready!")
+        st.success("✅ Kamu sudah standby!")
 
-with tabs[1]:
-    if not (moves.get("A_ready") and moves.get("B_ready")):
-        st.warning("⏳ Menunggu semua pemain Ready dulu...")
+with tabs[1]:  # Game
+    try:
+        moves = requests.get(f"{BASE_URL}/get_moves").json()
+    except:
+        moves = {}
+
+    if st.session_state.result_shown:
+        # --- Tampilkan hasil pertandingan ---
+        result = st.session_state.result_data
+        winner = result["result"]
+        move_a = result["A"]
+        move_b = result["B"]
+
+        if winner == "Seri":
+            st.snow()
+        else:
+            st.balloons()
+
+        st.success(f"🏆 {winner}")
+        st.info(f"🎮 Player A: {move_a}\n🎮 Player B: {move_b}")
+
+        try:
+            stats = requests.get(f"{BASE_URL}/stats").json()
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("🏆 Player A Menang", stats["Player A"]["win"])
+                st.metric("❌ Player A Kalah", stats["Player A"]["lose"])
+                st.metric("🤝 Player A Seri", stats["Player A"]["draw"])
+            with col2:
+                st.metric("🏆 Player B Menang", stats["Player B"]["win"])
+                st.metric("❌ Player B Kalah", stats["Player B"]["lose"])
+                st.metric("🤝 Player B Seri", stats["Player B"]["draw"])
+        except:
+            st.error("❌ Gagal ambil statistik.")
+
+        if st.button("🔄 Main Lagi"):
+            try:
+                requests.post(f"{BASE_URL}/reset")
+                st.success("✅ Game direset, silakan Ready lagi.")
+            except:
+                st.error("❌ Gagal reset game.")
+            reset_all_state()
+            st.experimental_rerun()
+
     else:
-        ctx = webrtc_streamer(
-            key="handtracking",
-            video_processor_factory=VideoProcessor,
-            media_stream_constraints={"video": True, "audio": False}
-        )
+        if not (moves.get("A_ready") and moves.get("B_ready")):
+            st.warning("⏳ Menunggu semua pemain Ready...")
+        else:
+            ctx = webrtc_streamer(
+                key="handtracking",
+                video_processor_factory=VideoProcessor,
+                media_stream_constraints={"video": True, "audio": False}
+            )
 
-        if ctx and ctx.state.playing:
-            if ctx.video_processor:
-                gesture_now = ctx.video_processor.gesture
-                st.success(f"🖐️ Gesture terdeteksi: {gesture_now}")
+            if ctx and ctx.state.playing:
+                if ctx.video_processor:
+                    gesture_now = ctx.video_processor.gesture
+                    st.success(f"🖐️ Gesture terdeteksi: {gesture_now}")
 
-                if not st.session_state.gesture_sent:
-                    if not st.session_state.countdown_started and not st.session_state.manual_mode:
-                        st.session_state.countdown_started = True
+                    if not st.session_state.gesture_sent:
+                        if not st.session_state.countdown_started:
+                            st.session_state.countdown_started = True
 
-                    if st.session_state.countdown_started:
-                        with st.spinner("⌛ Countdown 3 detik..."):
-                            time.sleep(3)
-                        if gesture_now in ["Batu", "Gunting", "Kertas"]:
-                            try:
-                                requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture_now})
-                                st.success(f"✅ Gerakan '{gesture_now}' berhasil dikirim otomatis!")
-                                st.session_state.gesture_sent = True
-                            except Exception as e:
-                                st.error(f"Gagal kirim otomatis: {e}")
-                        else:
-                            st.warning("✋ Gesture belum jelas. Pakai tombol manual.")
+                        if st.session_state.countdown_started:
+                            with st.spinner("⌛ Countdown 3 detik..."):
+                                time.sleep(3)
+                            if gesture_now in ["Batu", "Gunting", "Kertas"]:
+                                try:
+                                    requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture_now})
+                                    st.success(f"✅ Gerakan '{gesture_now}' berhasil dikirim otomatis!")
+                                    st.session_state.gesture_sent = True
+                                except:
+                                    st.error("❌ Gagal kirim otomatis.")
+                            else:
+                                st.warning("✋ Gesture belum jelas. Gunakan tombol manual.")
 
                     if not st.session_state.gesture_sent:
                         if st.button("📤 Kirim Manual"):
@@ -154,63 +198,23 @@ with tabs[1]:
                                     requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture_now})
                                     st.success(f"✅ Gerakan '{gesture_now}' berhasil dikirim manual!")
                                     st.session_state.gesture_sent = True
-                                except Exception as e:
-                                    st.error(f"Error manual kirim: {e}")
+                                except:
+                                    st.error("❌ Gagal kirim manual.")
                             else:
                                 st.warning("✋ Gesture belum jelas.")
             else:
-                st.warning("🔄 Memproses kamera...")
-        else:
-            st.warning("🚫 Kamera tidak aktif!")
+                st.warning("🚫 Kamera tidak aktif!")
 
-        if st.session_state.gesture_sent and not st.session_state.result_shown:
-            with st.spinner("⏳ Menunggu hasil pertandingan..."):
-                while True:
-                    try:
-                        result = requests.get(f"{BASE_URL}/result").json()
-                        if "result" in result:
-                            st.session_state.result_data = result
-                            st.session_state.result_shown = True
-                            break
-                    except:
-                        pass
-                    time.sleep(2)
-                st.rerun()
-
-        if st.session_state.result_shown and st.session_state.result_data:
-            result = st.session_state.result_data
-            winner = result["result"]
-            move_a = result["A"]
-            move_b = result["B"]
-
-            if winner == "Seri":
-                st.snow()
-            else:
-                st.balloons()
-
-            st.success(f"🏆 {winner}")
-            st.info(f"🎮 Player A: {move_a}\n🎮 Player B: {move_b}")
-
-            try:
-                stats = requests.get(f"{BASE_URL}/stats").json()
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("🏆 Player A Menang", stats["Player A"]["win"])
-                    st.metric("❌ Player A Kalah", stats["Player A"]["lose"])
-                    st.metric("🤝 Player A Seri", stats["Player A"]["draw"])
-                with col2:
-                    st.metric("🏆 Player B Menang", stats["Player B"]["win"])
-                    st.metric("❌ Player B Kalah", stats["Player B"]["lose"])
-                    st.metric("🤝 Player B Seri", stats["Player B"]["draw"])
-            except:
-                st.error("❌ Gagal mengambil statistik.")
-
-            if st.button("🔄 Main Lagi"):
-                try:
-                    requests.post(f"{BASE_URL}/reset")
-                    st.success("✅ Game sudah direset! Klik Ready lagi.")
-                except Exception as e:
-                    st.error(f"❌ Gagal reset game: {e}")
-
-                reset_all_state()
-                st.experimental_rerun()
+            if st.session_state.gesture_sent and not st.session_state.result_shown:
+                with st.spinner("⏳ Menunggu hasil pertandingan..."):
+                    while True:
+                        try:
+                            result = requests.get(f"{BASE_URL}/result").json()
+                            if "result" in result:
+                                st.session_state.result_data = result
+                                st.session_state.result_shown = True
+                                break
+                        except:
+                            pass
+                        time.sleep(2)
+                    st.rerun()
