@@ -45,7 +45,6 @@ def detect_gesture(hand_landmarks, handedness):
         fingers.append(1 if hand_landmarks.landmark[4].x > hand_landmarks.landmark[3].x else 0)
     for tip in [8, 12, 16, 20]:
         fingers.append(1 if hand_landmarks.landmark[tip].y < hand_landmarks.landmark[tip - 2].y else 0)
-
     total_fingers = sum(fingers)
 
     if total_fingers == 0:
@@ -92,7 +91,7 @@ def reset_all_state():
 # --- Main Tabs ---
 tabs = st.tabs(["🚀 Standby", "🎮 Game"])
 
-with tabs[0]:  # Tab Standby
+with tabs[0]:
     player = st.selectbox("Pilih peran kamu:", ["A", "B"])
 
     try:
@@ -121,7 +120,7 @@ with tabs[0]:  # Tab Standby
             except Exception as e:
                 st.error(f"🚨 Error standby: {e}")
 
-with tabs[1]:  # Tab Game
+with tabs[1]:
     if not (moves.get("A_ready") and moves.get("B_ready")):
         st.warning("⏳ Menunggu semua pemain standby terlebih dahulu...")
     else:
@@ -166,7 +165,6 @@ with tabs[1]:  # Tab Game
             else:
                 st.warning("🚫 Kamera belum aktif.")
 
-        # Setelah kirim gesture dan dapat hasil
         if st.session_state.gesture_sent and not st.session_state.result_shown:
             with st.spinner("⏳ Menunggu hasil pertandingan..."):
                 while True:
@@ -181,7 +179,6 @@ with tabs[1]:  # Tab Game
                     time.sleep(2)
                 st.rerun()
 
-        # Menampilkan hasil pertandingan
         if st.session_state.result_shown and st.session_state.result_data:
             result = st.session_state.result_data
             winner = result["result"]
@@ -193,10 +190,9 @@ with tabs[1]:  # Tab Game
             else:
                 st.balloons()
 
-            st.success(f"🏆 **{winner}**")
-            st.info(f"🎮 Player A: **{move_a}**\n🎮 Player B: **{move_b}**")
+            st.success(f"🏆 {winner}")
+            st.info(f"🎮 Player A: {move_a}\n🎮 Player B: {move_b}")
 
-            # Statistik
             try:
                 stats = requests.get(f"{BASE_URL}/stats").json()
                 col1, col2 = st.columns(2)
@@ -211,18 +207,13 @@ with tabs[1]:  # Tab Game
             except Exception as e:
                 st.error(f"❌ Gagal mengambil statistik: {e}")
 
-            # Tombol Main Lagi
-      if st.button("🔄 Main Lagi"):
-    try:
-        requests.post(f"{BASE_URL}/reset")
-        st.success("✅ Game berhasil di-reset!")
-    except Exception as e:
-        st.error(f"❌ Gagal reset game: {e}")
+            if st.button("🔄 Main Lagi"):
+                try:
+                    requests.post(f"{BASE_URL}/reset")
+                    st.success("✅ Game berhasil di-reset!")
+                except Exception as e:
+                    st.error(f"❌ Gagal reset game: {e}")
 
-    reset_all_state()
+                reset_all_state()
+                st.info("🚀 Silakan klik tombol Standby lagi untuk memulai permainan baru.")
 
-    # Setelah reset, TIDAK rerun
-    st.info("🚀 Silakan klik tombol Standby lagi untuk memulai permainan baru.")
-
-
-                
