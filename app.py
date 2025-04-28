@@ -10,8 +10,31 @@ import mediapipe as mp
 BASE_URL = "https://web-production-7e17f.up.railway.app"
 
 # Set page config
-st.set_page_config(page_title="Gunting Batu Kertas Online", page_icon="✌️")
-st.title("✌️ Gunting Batu Kertas Online Multiplayer")
+st.set_page_config(page_title="✌️ Gunting Batu Kertas Online", page_icon="🎮")
+
+# CSS Styling
+st.markdown(
+    """
+    <style>
+    .title {
+        font-size: 48px;
+        color: #ff4b4b;
+        text-align: center;
+        font-weight: bold;
+    }
+    .subtitle {
+        font-size: 24px;
+        text-align: center;
+        color: #1f77b4;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# Title
+st.markdown('<div class="title">Gunting Batu Kertas</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Multiplayer Online Game 🎮</div>', unsafe_allow_html=True)
 
 # Session State
 if "standby" not in st.session_state:
@@ -75,106 +98,108 @@ def reset_all_state():
     st.session_state.result_shown = False
     st.session_state.result_data = None
 
-# Pilih Peran
-player = st.selectbox("Pilih peran", ["A", "B"])
+# --- Main Tabs ---
+tabs = st.tabs(["🚀 Standby", "🎮 Game"])
 
-# Cek siapa yang standby
-try:
-    moves = requests.get(f"{BASE_URL}/get_moves").json()
-except Exception as e:
-    st.error(f"🔌 Gagal terhubung ke server: {e}")
-    moves = {}
+with tabs[0]:
+    player = st.selectbox("Pilih peran kamu:", ["A", "B"])
 
-ready_players = []
-if moves.get("A_ready"):
-    ready_players.append("Player A")
-if moves.get("B_ready"):
-    ready_players.append("Player B")
+    # Check standby status
+    try:
+        moves = requests.get(f"{BASE_URL}/get_moves").json()
+    except Exception as e:
+        st.error(f"🔌 Gagal terhubung ke server: {e}")
+        moves = {}
 
-st.info(f"👥 Pemain Standby: {', '.join(ready_players) if ready_players else 'Belum ada'}")
+    ready_players = []
+    if moves.get("A_ready"):
+        ready_players.append("Player A")
+    if moves.get("B_ready"):
+        ready_players.append("Player B")
 
-# Tombol Standby
-if not st.session_state.standby:
-    if st.button("🚀 Standby Siap Main"):
-        try:
-            response = requests.post(f"{BASE_URL}/standby", json={"player": player})
-            if response.status_code == 200:
-                st.success("✅ Kamu sudah standby!")
-                st.session_state.standby = True
-            else:
-                st.error("❌ Gagal standby.")
-        except Exception as e:
-            st.error(f"🚨 Error standby: {e}")
+    st.info(f"👥 Pemain yang Standby: {', '.join(ready_players) if ready_players else 'Belum ada'}")
 
-# Kalau belum dua pemain standby
-if not (moves.get("A_ready") and moves.get("B_ready")):
-    st.warning("⏳ Menunggu semua pemain standby...")
-    # Tidak pakai st.stop(), supaya user tetap bisa standby
-else:
-    # Kalau sudah dua pemain standby ➔ lanjutkan game
+    if not st.session_state.standby:
+        if st.button("🚀 Klik untuk Standby"):
+            try:
+                response = requests.post(f"{BASE_URL}/standby", json={"player": player})
+                if response.status_code == 200:
+                    st.success("✅ Kamu sudah standby!")
+                    st.session_state.standby = True
+                else:
+                    st.error("❌ Gagal standby.")
+            except Exception as e:
+                st.error(f"🚨 Error standby: {e}")
 
-    # Kamera Stream
-    ctx = webrtc_streamer(
-        key="handtracking",
-        video_processor_factory=VideoProcessor,
-        media_stream_constraints={"video": True, "audio": False}
-    )
-
-    # Main Game
-    if ctx and ctx.state.playing:
-        st.subheader("📸 Kamera Aktif - Deteksi Gesture")
-        if ctx.video_processor:
-            gesture_now = ctx.video_processor.gesture
-            st.success(f"🖐️ Gesture Terdeteksi: **{gesture_now}**")
-
-            if not st.session_state.gesture_sent:
-                if st.button("📤 Kirim Gerakan"):
-                    if gesture_now in ["Batu", "Gunting", "Kertas"]:
-                        try:
-                            response = requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture_now})
-                            if response.status_code == 200:
-                                st.success(f"✅ Gerakan '{gesture_now}' berhasil dikirim!")
-                                st.session_state.gesture_sent = True
-                            else:
-                                st.error("❌ Gagal kirim gesture.")
-                        except Exception as e:
-                            st.error(f"🚨 Error kirim gesture: {e}")
-                    else:
-                        st.warning("✋ Gesture belum dikenali.")
-        else:
-            st.warning("🔄 Mendeteksi gesture...")
+with tabs[1]:
+    if not (moves.get("A_ready") and moves.get("B_ready")):
+        st.warning("⏳ Menunggu semua pemain standby terlebih dahulu...")
     else:
-        st.warning("🚫 Kamera belum aktif.")
+        col1, col2 = st.columns(2)
 
-    # Setelah Kirim Gesture: Tunggu hasil
-    if st.session_state.gesture_sent and not st.session_state.result_shown:
-        with st.spinner("⏳ Menunggu hasil pertandingan..."):
-            while True:
+        with col1:
+            ctx = webrtc_streamer(
+                key="handtracking",
+                video_processor_factory=VideoProcessor,
+                media_stream_constraints={"video": True, "audio": False}
+            )
+
+        with col2:
+            if ctx and ctx.state.playing:
+                st.subheader("📸 Kamera Aktif")
+                if ctx.video_processor:
+                    gesture_now = ctx.video_processor.gesture
+                    st.success(f"🖐️ Gesture Terdeteksi: **{gesture_now}**")
+
+                    if not st.session_state.gesture_sent:
+                        if st.button("📤 Kirim Gesture"):
+                            if gesture_now in ["Batu", "Gunting", "Kertas"]:
+                                try:
+                                    response = requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture_now})
+                                    if response.status_code == 200:
+                                        st.success(f"✅ Gerakan '{gesture_now}' berhasil dikirim!")
+                                        st.session_state.gesture_sent = True
+                                    else:
+                                        st.error("❌ Gagal kirim gesture.")
+                                except Exception as e:
+                                    st.error(f"🚨 Error kirim gesture: {e}")
+                            else:
+                                st.warning("✋ Gesture belum dikenali.")
+                else:
+                    st.warning("🔄 Mendeteksi gesture...")
+            else:
+                st.warning("🚫 Kamera belum aktif.")
+
+        # Setelah kirim gesture
+        if st.session_state.gesture_sent and not st.session_state.result_shown:
+            with st.spinner("⏳ Menunggu hasil pertandingan..."):
+                while True:
+                    try:
+                        result = requests.get(f"{BASE_URL}/result").json()
+                        if "result" in result:
+                            st.session_state.result_data = result
+                            st.session_state.result_shown = True
+                            break
+                    except:
+                        pass
+                    time.sleep(2)
+                st.rerun()
+
+        # Tampilkan hasil
+        if st.session_state.result_shown and st.session_state.result_data:
+            result = st.session_state.result_data
+            winner = result["result"]
+            move_a = result["A"]
+            move_b = result["B"]
+
+            st.success(f"🏆 **{winner}**")
+            st.info(f"🎮 Player A: **{move_a}**\n🎮 Player B: **{move_b}**")
+            st.balloons()
+
+            if st.button("🔄 Main Lagi"):
                 try:
-                    result = requests.get(f"{BASE_URL}/result").json()
-                    if "result" in result:
-                        st.session_state.result_data = result
-                        st.session_state.result_shown = True
-                        break
+                    requests.post(f"{BASE_URL}/reset")
                 except:
                     pass
-                time.sleep(2)
-            st.rerun()
-
-    # Menampilkan Hasil
-    if st.session_state.result_shown and st.session_state.result_data:
-        result = st.session_state.result_data
-        winner = result["result"]
-        move_a = result["A"]
-        move_b = result["B"]
-
-        st.balloons()
-        st.success(f"🏆 {winner}!\n\n🎮 Player A: **{move_a}**\n🎮 Player B: **{move_b}**")
-
-        if st.button("🔄 Main Lagi"):
-            try:
-                requests.post(f"{BASE_URL}/reset")
-            except:
-                pass
-            reset_all_state()
-            st.rerun()
+                reset_all_state()
+                st.rerun()
