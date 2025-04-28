@@ -142,7 +142,8 @@ if ctx and ctx.state.playing:
                     response = requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture_now})
                     if response.status_code == 200:
                         st.success(f"✅ Gerakan '{gesture_now}' berhasil dikirim!")
-                        ctx.state.playing = False
+                        st.info("✅ Menunggu hasil dari server...")
+                        # ctx.state.playing = False  <-- HAPUS INI!!!
                     else:
                         st.error("❌ Gagal kirim gesture.")
                 except Exception as e:
@@ -153,3 +154,4 @@ if ctx and ctx.state.playing:
         st.warning("🔄 Mendeteksi gerakan...")
 else:
     st.warning("🚫 Kamera belum aktif atau sudah berhenti.")
+
