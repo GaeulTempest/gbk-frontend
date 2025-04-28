@@ -6,19 +6,21 @@ import av
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import mediapipe as mp
 
-BASE_URL = "https://web-production-7e17f.up.railway.app"
+BASE_URL = "https://web-production-7e17f.up.railway.app"  # Ganti URL backend kamu
 
 st.title("🕹️ Gunting Batu Kertas - ONLINE")
 
 player = st.selectbox("Pilih peran", ["A", "B"])
 
-# Session State Setup
+# --- Session State Setup ---
 if "standby" not in st.session_state:
     st.session_state.standby = False
 if "gesture_sent" not in st.session_state:
     st.session_state.gesture_sent = False
 if "result_shown" not in st.session_state:
     st.session_state.result_shown = False
+if "result_data" not in st.session_state:
+    st.session_state.result_data = None
 
 # --- Fungsi Deteksi Gesture ---
 def detect_gesture(hand_landmarks, handedness):
@@ -70,6 +72,7 @@ def reset_all_state():
     st.session_state.standby = False
     st.session_state.gesture_sent = False
     st.session_state.result_shown = False
+    st.session_state.result_data = None
 
 # --- Fungsi Polling Result ---
 def polling_result():
@@ -77,12 +80,9 @@ def polling_result():
         while True:
             result = requests.get(f"{BASE_URL}/result").json()
             if "result" in result:
-                winner = result["result"]
-                move_a = result["A"]
-                move_b = result["B"]
-
-                st.success(f"🏆 {winner}!\n\nPlayer A: {move_a}\nPlayer B: {move_b}")
+                st.session_state.result_data = result
                 st.session_state.result_shown = True
+                st.rerun()
                 break
 
             time.sleep(2)
@@ -151,8 +151,16 @@ if ctx and ctx.state.playing:
 else:
     st.warning("🚫 Kamera belum aktif.")
 
-# --- Setelah Game Selesai ---
-if st.session_state.result_shown:
+# --- Tampilkan Hasil Setelah Game Selesai ---
+if st.session_state.result_shown and st.session_state.result_data:
+    result = st.session_state.result_data
+    winner = result["result"]
+    move_a = result["A"]
+    move_b = result["B"]
+
+    st.balloons()
+    st.success(f"🏆 {winner}!\n\n🎮 Player A memilih: **{move_a}**\n🎮 Player B memilih: **{move_b}**")
+
     if st.button("🔄 Main Lagi"):
         requests.post(f"{BASE_URL}/reset")
         reset_all_state()
