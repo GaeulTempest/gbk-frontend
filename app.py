@@ -6,7 +6,7 @@ import av
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import mediapipe as mp
 
-BASE_URL = "https://web-production-7e17f.up.railway.app"  # Ganti URL backend kamu
+BASE_URL = "https://web-production-7e17f.up.railway.app"
 
 st.title("🕹️ Gunting Batu Kertas - ONLINE")
 
@@ -15,10 +15,6 @@ player = st.selectbox("Pilih peran", ["A", "B"])
 # Session State Setup
 if "standby" not in st.session_state:
     st.session_state.standby = False
-if "game_started" not in st.session_state:
-    st.session_state.game_started = False
-if "start_time" not in st.session_state:
-    st.session_state.start_time = None
 if "gesture_sent" not in st.session_state:
     st.session_state.gesture_sent = False
 if "result_shown" not in st.session_state:
@@ -72,8 +68,6 @@ class VideoProcessor(VideoTransformerBase):
 # --- Fungsi Reset Semua State ---
 def reset_all_state():
     st.session_state.standby = False
-    st.session_state.game_started = False
-    st.session_state.start_time = None
     st.session_state.gesture_sent = False
     st.session_state.result_shown = False
 
@@ -87,8 +81,7 @@ def polling_result():
                 move_a = result["A"]
                 move_b = result["B"]
 
-                # Tampilkan popup hasil
-                st.success(f"🏆 {winner}!\n\nPlayer A memilih: {move_a}\nPlayer B memilih: {move_b}")
+                st.success(f"🏆 {winner}!\n\nPlayer A: {move_a}\nPlayer B: {move_b}")
                 st.session_state.result_shown = True
                 break
 
@@ -103,7 +96,7 @@ if moves.get("A_ready"):
 if moves.get("B_ready"):
     ready_players.append("Player B")
 
-st.info(f"👥 Pemain yang sudah standby: {', '.join(ready_players) if ready_players else 'Belum ada'}")
+st.info(f"👥 Pemain Standby: {', '.join(ready_players) if ready_players else 'Belum ada'}")
 
 if not st.session_state.standby:
     if st.button("🚀 Standby Siap Main"):
@@ -119,27 +112,6 @@ if not st.session_state.standby:
 
 if not (moves.get("A_ready") and moves.get("B_ready")):
     st.warning("⏳ Menunggu semua pemain standby...")
-    st.stop()
-
-# --- Timer Progress 60 Detik ---
-if not st.session_state.game_started:
-    st.session_state.start_time = time.time()
-    st.session_state.game_started = True
-
-elapsed_time = int(time.time() - st.session_state.start_time)
-remaining_time = 60 - elapsed_time
-progress = st.progress(0)
-
-if remaining_time > 0:
-    progress.progress(elapsed_time / 60)
-    st.info(f"⏳ Sisa waktu: {remaining_time} detik")
-else:
-    progress.progress(1.0)
-    st.error("⏰ Waktu habis!")
-    if st.button("🔄 Main Lagi"):
-        requests.post(f"{BASE_URL}/reset")
-        reset_all_state()
-        st.rerun()
     st.stop()
 
 # --- Stream Kamera ---
@@ -178,3 +150,10 @@ if ctx and ctx.state.playing:
         st.warning("🔄 Mendeteksi gerakan...")
 else:
     st.warning("🚫 Kamera belum aktif.")
+
+# --- Setelah Game Selesai ---
+if st.session_state.result_shown:
+    if st.button("🔄 Main Lagi"):
+        requests.post(f"{BASE_URL}/reset")
+        reset_all_state()
+        st.rerun()
