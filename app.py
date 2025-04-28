@@ -212,9 +212,23 @@ with tabs[1]:
                 st.error(f"❌ Gagal mengambil statistik: {e}")
 
             if st.button("🔄 Main Lagi"):
-                try:
-                    requests.post(f"{BASE_URL}/reset")
-                except:
-                    pass
-                reset_all_state()
-                st.rerun()
+    try:
+        requests.post(f"{BASE_URL}/reset")
+    except:
+        pass
+    reset_all_state()
+    
+    # --- Otomatis standby lagi setelah reset
+    try:
+        standby_payload = {"player": player}
+        response = requests.post(f"{BASE_URL}/standby", json=standby_payload)
+        if response.status_code == 200:
+            st.success("✅ Kamu otomatis standby lagi setelah reset!")
+            st.session_state.standby = True
+        else:
+            st.warning("⚠️ Gagal standby ulang, klik manual di tab Standby.")
+    except Exception as e:
+        st.error(f"❌ Error standby ulang: {e}")
+    
+    st.rerun()
+
