@@ -7,7 +7,7 @@ from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import mediapipe as mp
 
 # URL backend
-BASE_URL = "https://web-production-7e17f.up.railway.app"  # Ganti ke URL server kamu
+BASE_URL = "https://web-production-7e17f.up.railway.app"
 
 # Set page
 st.set_page_config(page_title="Gunting Batu Kertas Online", page_icon="✌️")
@@ -157,7 +157,7 @@ if st.session_state.gesture_sent and not st.session_state.result_shown:
             except:
                 pass
             time.sleep(2)
-        st.experimental_rerun()
+        st.rerun()
 
 # Menampilkan Hasil
 if st.session_state.result_shown and st.session_state.result_data:
@@ -175,4 +175,4 @@ if st.session_state.result_shown and st.session_state.result_data:
         except:
             pass
         reset_all_state()
-        st.experimental_rerun()
+        st.rerun()
