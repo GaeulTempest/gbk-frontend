@@ -217,18 +217,8 @@ with tabs[1]:  # Tab Game
                     requests.post(f"{BASE_URL}/reset")
                 except:
                     pass
-                reset_all_state()
+                    reset_all_state()
+st.success("✅ Game berhasil di-reset! Silahkan klik tombol Standby lagi untuk memulai.")
+st.rerun()
 
-                # Auto Standby lagi
-                try:
-                    standby_payload = {"player": player}
-                    response = requests.post(f"{BASE_URL}/standby", json=standby_payload)
-                    if response.status_code == 200:
-                        st.success("✅ Kamu otomatis standby lagi setelah reset!")
-                        st.session_state.standby = True
-                    else:
-                        st.warning("⚠️ Gagal standby ulang, klik manual.")
-                except Exception as e:
-                    st.error(f"❌ Error standby ulang: {e}")
-
-                st.rerun()
+                
