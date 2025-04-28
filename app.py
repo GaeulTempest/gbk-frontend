@@ -13,24 +13,12 @@ BASE_URL = "https://web-production-7e17f.up.railway.app"
 st.set_page_config(page_title="✌️ Gunting Batu Kertas Online", page_icon="🎮")
 
 # CSS Styling
-st.markdown(
-    """
+st.markdown("""
     <style>
-    .title {
-        font-size: 48px;
-        color: #ff4b4b;
-        text-align: center;
-        font-weight: bold;
-    }
-    .subtitle {
-        font-size: 24px;
-        text-align: center;
-        color: #1f77b4;
-    }
+    .title {font-size: 48px; color: #ff4b4b; text-align: center; font-weight: bold;}
+    .subtitle {font-size: 24px; text-align: center; color: #1f77b4;}
     </style>
-    """,
-    unsafe_allow_html=True
-)
+""", unsafe_allow_html=True)
 
 # Title
 st.markdown('<div class="title">Gunting Batu Kertas</div>', unsafe_allow_html=True)
@@ -45,8 +33,10 @@ if "result_shown" not in st.session_state:
     st.session_state.result_shown = False
 if "result_data" not in st.session_state:
     st.session_state.result_data = None
+if "countdown_started" not in st.session_state:
+    st.session_state.countdown_started = False
 
-# Fungsi Deteksi Gesture
+# Deteksi Gesture
 def detect_gesture(hand_landmarks, handedness):
     fingers = []
     if handedness == "Right":
@@ -97,6 +87,7 @@ def reset_all_state():
     st.session_state.gesture_sent = False
     st.session_state.result_shown = False
     st.session_state.result_data = None
+    st.session_state.countdown_started = False
 
 # --- Main Tabs ---
 tabs = st.tabs(["🚀 Standby", "🎮 Game"])
@@ -104,7 +95,6 @@ tabs = st.tabs(["🚀 Standby", "🎮 Game"])
 with tabs[0]:
     player = st.selectbox("Pilih peran kamu:", ["A", "B"])
 
-    # Check standby status
     try:
         moves = requests.get(f"{BASE_URL}/get_moves").json()
     except Exception as e:
@@ -117,7 +107,7 @@ with tabs[0]:
     if moves.get("B_ready"):
         ready_players.append("Player B")
 
-    st.info(f"👥 Pemain yang Standby: {', '.join(ready_players) if ready_players else 'Belum ada'}")
+    st.info(f"👥 Pemain Standby: {', '.join(ready_players) if ready_players else 'Belum ada'}")
 
     if not st.session_state.standby:
         if st.button("🚀 Klik untuk Standby"):
@@ -152,7 +142,13 @@ with tabs[1]:
                     st.success(f"🖐️ Gesture Terdeteksi: **{gesture_now}**")
 
                     if not st.session_state.gesture_sent:
-                        if st.button("📤 Kirim Gesture"):
+                        if not st.session_state.countdown_started:
+                            if st.button("⏳ Mulai Countdown 3 detik lalu Submit"):
+                                st.session_state.countdown_started = True
+                        if st.session_state.countdown_started:
+                            for i in range(3, 0, -1):
+                                st.write(f"⌛ Bersiap dalam {i}...")
+                                time.sleep(1)
                             if gesture_now in ["Batu", "Gunting", "Kertas"]:
                                 try:
                                     response = requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture_now})
@@ -170,7 +166,7 @@ with tabs[1]:
             else:
                 st.warning("🚫 Kamera belum aktif.")
 
-        # Setelah kirim gesture
+        # Setelah Kirim Gesture
         if st.session_state.gesture_sent and not st.session_state.result_shown:
             with st.spinner("⏳ Menunggu hasil pertandingan..."):
                 while True:
@@ -192,9 +188,28 @@ with tabs[1]:
             move_a = result["A"]
             move_b = result["B"]
 
+            if winner == "Seri":
+                st.snow()
+            else:
+                st.balloons()
+
             st.success(f"🏆 **{winner}**")
             st.info(f"🎮 Player A: **{move_a}**\n🎮 Player B: **{move_b}**")
-            st.balloons()
+
+            # Statistik
+            try:
+                stats = requests.get(f"{BASE_URL}/stats").json()
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("🏆 Player A Menang", stats["Player A"]["win"])
+                    st.metric("❌ Player A Kalah", stats["Player A"]["lose"])
+                    st.metric("🤝 Player A Seri", stats["Player A"]["draw"])
+                with col2:
+                    st.metric("🏆 Player B Menang", stats["Player B"]["win"])
+                    st.metric("❌ Player B Kalah", stats["Player B"]["lose"])
+                    st.metric("🤝 Player B Seri", stats["Player B"]["draw"])
+            except Exception as e:
+                st.error(f"❌ Gagal mengambil statistik: {e}")
 
             if st.button("🔄 Main Lagi"):
                 try:
