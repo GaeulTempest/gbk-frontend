@@ -1,30 +1,28 @@
 import streamlit as st
 import requests
+import time
 import cv2
 import av
-import time
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import mediapipe as mp
 
-# URL backend
-BASE_URL = "https://web-production-7e17f.up.railway.app"
+BASE_URL = "https://web-production-7e17f.up.railway.app"  # ganti sesuai servermu
 
-# Page config
+# Config halaman
 st.set_page_config(page_title="✌️ Gunting Batu Kertas Online", page_icon="🎮")
 
-# Styling
+# Styling sederhana
 st.markdown("""
     <style>
-    .title {font-size: 48px; color: #ff4b4b; text-align: center; font-weight: bold;}
-    .subtitle {font-size: 24px; text-align: center; color: #1f77b4;}
+    .title {font-size: 45px; color: #ff4b4b; text-align: center; font-weight: bold;}
+    .subtitle {font-size: 25px; text-align: center; color: #1f77b4;}
     </style>
 """, unsafe_allow_html=True)
 
-# Title
 st.markdown('<div class="title">Gunting Batu Kertas</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Multiplayer Online Game 🎮</div>', unsafe_allow_html=True)
 
-# Session states
+# Session state init
 if "gesture_sent" not in st.session_state:
     st.session_state.gesture_sent = False
 if "result_shown" not in st.session_state:
@@ -33,8 +31,10 @@ if "result_data" not in st.session_state:
     st.session_state.result_data = None
 if "countdown_started" not in st.session_state:
     st.session_state.countdown_started = False
+if "manual_mode" not in st.session_state:
+    st.session_state.manual_mode = False
 
-# Gesture detection
+# Gesture Detection
 def detect_gesture(hand_landmarks, handedness):
     fingers = []
     if handedness == "Right":
@@ -54,7 +54,6 @@ def detect_gesture(hand_landmarks, handedness):
     else:
         return "Tidak dikenali"
 
-# Video Processor
 class VideoProcessor(VideoTransformerBase):
     def __init__(self):
         self.gesture = "Belum ada"
@@ -78,23 +77,23 @@ class VideoProcessor(VideoTransformerBase):
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-# Reset all states
 def reset_all_state():
     st.session_state.gesture_sent = False
     st.session_state.result_shown = False
     st.session_state.result_data = None
     st.session_state.countdown_started = False
+    st.session_state.manual_mode = False
 
 # --- Tabs ---
 tabs = st.tabs(["🚀 Standby", "🎮 Game"])
 
-with tabs[0]:  # Standby Tab
+with tabs[0]:
     player = st.selectbox("Pilih peran kamu:", ["A", "B"])
 
     try:
         moves = requests.get(f"{BASE_URL}/get_moves").json()
     except Exception as e:
-        st.error(f"🔌 Gagal terhubung ke server: {e}")
+        st.error(f"Gagal ambil data server: {e}")
         moves = {}
 
     ready_players = []
@@ -105,65 +104,64 @@ with tabs[0]:  # Standby Tab
 
     st.info(f"👥 Pemain Standby: {', '.join(ready_players) if ready_players else 'Belum ada'}")
 
-    # --- Tombol Standby HANYA muncul kalau server belum ready
     player_ready_key = f"{player}_ready"
     if not moves.get(player_ready_key):
-        if st.button("🚀 Klik untuk Standby"):
+        if st.button("🚀 Klik Ready"):
             try:
-                response = requests.post(f"{BASE_URL}/standby", json={"player": player})
-                if response.status_code == 200:
-                    st.success("✅ Kamu sudah standby!")
-                else:
-                    st.error("❌ Gagal standby.")
+                requests.post(f"{BASE_URL}/standby", json={"player": player})
+                st.success("✅ Kamu sudah ready!")
             except Exception as e:
-                st.error(f"🚨 Error standby: {e}")
+                st.error(f"Error: {e}")
     else:
-        st.success("✅ Kamu sudah standby dan siap bermain!")
+        st.success("✅ Kamu sudah ready!")
 
-with tabs[1]:  # Game Tab
+with tabs[1]:
     if not (moves.get("A_ready") and moves.get("B_ready")):
-        st.warning("⏳ Menunggu semua pemain standby terlebih dahulu...")
+        st.warning("⏳ Menunggu semua pemain Ready dulu...")
     else:
-        col1, col2 = st.columns(2)
+        ctx = webrtc_streamer(
+            key="handtracking",
+            video_processor_factory=VideoProcessor,
+            media_stream_constraints={"video": True, "audio": False}
+        )
 
-        with col1:
-            ctx = webrtc_streamer(
-                key="handtracking",
-                video_processor_factory=VideoProcessor,
-                media_stream_constraints={"video": True, "audio": False}
-            )
+        if ctx and ctx.state.playing:
+            if ctx.video_processor:
+                gesture_now = ctx.video_processor.gesture
+                st.success(f"🖐️ Gesture terdeteksi: {gesture_now}")
 
-        with col2:
-            if ctx and ctx.state.playing:
-                st.subheader("📸 Kamera Aktif")
-                if ctx.video_processor:
-                    gesture_now = ctx.video_processor.gesture
-                    st.success(f"🖐️ Gesture Terdeteksi: **{gesture_now}**")
+                if not st.session_state.gesture_sent:
+                    if not st.session_state.countdown_started and not st.session_state.manual_mode:
+                        st.session_state.countdown_started = True
+
+                    if st.session_state.countdown_started:
+                        with st.spinner("⌛ Countdown 3 detik..."):
+                            time.sleep(3)
+                        if gesture_now in ["Batu", "Gunting", "Kertas"]:
+                            try:
+                                requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture_now})
+                                st.success(f"✅ Gerakan '{gesture_now}' berhasil dikirim otomatis!")
+                                st.session_state.gesture_sent = True
+                            except Exception as e:
+                                st.error(f"Gagal kirim otomatis: {e}")
+                        else:
+                            st.warning("✋ Gesture belum jelas. Pakai tombol manual.")
 
                     if not st.session_state.gesture_sent:
-                        if not st.session_state.countdown_started:
-                            if st.button("⏳ Mulai Countdown 3 detik lalu Submit"):
-                                st.session_state.countdown_started = True
-                        if st.session_state.countdown_started:
-                            for i in range(3, 0, -1):
-                                st.write(f"⌛ Bersiap dalam {i}...")
-                                time.sleep(1)
+                        if st.button("📤 Kirim Manual"):
                             if gesture_now in ["Batu", "Gunting", "Kertas"]:
                                 try:
-                                    response = requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture_now})
-                                    if response.status_code == 200:
-                                        st.success(f"✅ Gerakan '{gesture_now}' berhasil dikirim!")
-                                        st.session_state.gesture_sent = True
-                                    else:
-                                        st.error("❌ Gagal kirim gesture.")
+                                    requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture_now})
+                                    st.success(f"✅ Gerakan '{gesture_now}' berhasil dikirim manual!")
+                                    st.session_state.gesture_sent = True
                                 except Exception as e:
-                                    st.error(f"🚨 Error kirim gesture: {e}")
+                                    st.error(f"Error manual kirim: {e}")
                             else:
-                                st.warning("✋ Gesture belum dikenali.")
-                else:
-                    st.warning("🔄 Mendeteksi gesture...")
+                                st.warning("✋ Gesture belum jelas.")
             else:
-                st.warning("🚫 Kamera belum aktif.")
+                st.warning("🔄 Memproses kamera...")
+        else:
+            st.warning("🚫 Kamera tidak aktif!")
 
         if st.session_state.gesture_sent and not st.session_state.result_shown:
             with st.spinner("⏳ Menunggu hasil pertandingan..."):
@@ -204,15 +202,15 @@ with tabs[1]:  # Game Tab
                     st.metric("🏆 Player B Menang", stats["Player B"]["win"])
                     st.metric("❌ Player B Kalah", stats["Player B"]["lose"])
                     st.metric("🤝 Player B Seri", stats["Player B"]["draw"])
-            except Exception as e:
-                st.error(f"❌ Gagal mengambil statistik: {e}")
+            except:
+                st.error("❌ Gagal mengambil statistik.")
 
             if st.button("🔄 Main Lagi"):
                 try:
                     requests.post(f"{BASE_URL}/reset")
-                    st.success("✅ Game berhasil di-reset!")
+                    st.success("✅ Game sudah direset! Klik Ready lagi.")
                 except Exception as e:
                     st.error(f"❌ Gagal reset game: {e}")
 
                 reset_all_state()
-                st.info("🚀 Silakan klik tombol Standby lagi untuk memulai permainan baru.")
+                st.experimental_rerun()
