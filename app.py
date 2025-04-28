@@ -5,16 +5,15 @@ import av
 import time
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import mediapipe as mp
-from streamlit_autorefresh import st_autorefresh
 
-# --- Konfigurasi URL backend ---
-BASE_URL = "https://web-production-7e17f.up.railway.app"  # Ganti sesuai server kamu
+# URL backend
+BASE_URL = "https://web-production-7e17f.up.railway.app"  # Ganti ke URL server kamu
 
-# --- Set Streamlit Page ---
+# Set page
 st.set_page_config(page_title="Gunting Batu Kertas Online", page_icon="✌️")
 st.title("✌️ Gunting Batu Kertas Online Multiplayer")
 
-# --- Session State ---
+# Session State
 if "standby" not in st.session_state:
     st.session_state.standby = False
 if "gesture_sent" not in st.session_state:
@@ -24,18 +23,13 @@ if "result_shown" not in st.session_state:
 if "result_data" not in st.session_state:
     st.session_state.result_data = None
 
-# --- Auto Refresh untuk polling setiap 2 detik ---
-st_autorefresh(interval=2000, limit=None, key="auto_refresh")
-
-# --- Fungsi Deteksi Gesture ---
+# Fungsi Deteksi Gesture
 def detect_gesture(hand_landmarks, handedness):
     fingers = []
-
     if handedness == "Right":
         fingers.append(1 if hand_landmarks.landmark[4].x < hand_landmarks.landmark[3].x else 0)
     else:
         fingers.append(1 if hand_landmarks.landmark[4].x > hand_landmarks.landmark[3].x else 0)
-
     for tip in [8, 12, 16, 20]:
         fingers.append(1 if hand_landmarks.landmark[tip].y < hand_landmarks.landmark[tip - 2].y else 0)
 
@@ -50,7 +44,7 @@ def detect_gesture(hand_landmarks, handedness):
     else:
         return "Tidak dikenali"
 
-# --- Kelas Video Processor ---
+# Video Processor
 class VideoProcessor(VideoTransformerBase):
     def __init__(self):
         self.gesture = "Belum ada"
@@ -74,18 +68,17 @@ class VideoProcessor(VideoTransformerBase):
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-# --- Fungsi Reset State ---
+# Reset Semua State
 def reset_all_state():
     st.session_state.standby = False
     st.session_state.gesture_sent = False
     st.session_state.result_shown = False
     st.session_state.result_data = None
 
-# --- Pilih Peran ---
+# Pilih Peran
 player = st.selectbox("Pilih peran", ["A", "B"])
-st.session_state.player = player
 
-# --- Cek Siapa yang Standby ---
+# Cek siapa yang standby
 try:
     moves = requests.get(f"{BASE_URL}/get_moves").json()
 except Exception as e:
@@ -100,7 +93,7 @@ if moves.get("B_ready"):
 
 st.info(f"👥 Pemain Standby: {', '.join(ready_players) if ready_players else 'Belum ada'}")
 
-# --- Tombol Standby ---
+# Tombol Standby
 if not st.session_state.standby:
     if st.button("🚀 Standby Siap Main"):
         try:
@@ -113,19 +106,19 @@ if not st.session_state.standby:
         except Exception as e:
             st.error(f"🚨 Error standby: {e}")
 
-# --- Cek Kalau belum 2 pemain standby ---
+# Kalau belum semua standby
 if not (moves.get("A_ready") and moves.get("B_ready")):
     st.warning("⏳ Menunggu semua pemain standby...")
     st.stop()
 
-# --- Kamera Live Stream ---
+# Kamera Stream
 ctx = webrtc_streamer(
     key="handtracking",
     video_processor_factory=VideoProcessor,
     media_stream_constraints={"video": True, "audio": False}
 )
 
-# --- Game Berlangsung ---
+# Main Game
 if ctx and ctx.state.playing:
     st.subheader("📸 Kamera Aktif - Deteksi Gesture")
     if ctx.video_processor:
@@ -151,17 +144,22 @@ if ctx and ctx.state.playing:
 else:
     st.warning("🚫 Kamera belum aktif.")
 
-# --- Setelah Kirim Gesture: Polling Hasil ---
+# Setelah Kirim Gesture: Tunggu hasil
 if st.session_state.gesture_sent and not st.session_state.result_shown:
-    try:
-        result = requests.get(f"{BASE_URL}/result").json()
-        if "result" in result:
-            st.session_state.result_data = result
-            st.session_state.result_shown = True
-    except Exception as e:
-        st.error(f"🚨 Error polling hasil: {e}")
+    with st.spinner("⏳ Menunggu hasil pertandingan..."):
+        while True:
+            try:
+                result = requests.get(f"{BASE_URL}/result").json()
+                if "result" in result:
+                    st.session_state.result_data = result
+                    st.session_state.result_shown = True
+                    break
+            except:
+                pass
+            time.sleep(2)
+        st.experimental_rerun()
 
-# --- Menampilkan Hasil ---
+# Menampilkan Hasil
 if st.session_state.result_shown and st.session_state.result_data:
     result = st.session_state.result_data
     winner = result["result"]
@@ -174,7 +172,7 @@ if st.session_state.result_shown and st.session_state.result_data:
     if st.button("🔄 Main Lagi"):
         try:
             requests.post(f"{BASE_URL}/reset")
-        except Exception as e:
-            st.error(f"🚨 Gagal reset server: {e}")
+        except:
+            pass
         reset_all_state()
-        st.rerun()
+        st.experimental_rerun()
