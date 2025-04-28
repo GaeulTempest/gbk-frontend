@@ -157,7 +157,7 @@ with tabs[1]:  # Game
             except:
                 st.error("❌ Gagal reset game.")
             reset_all_state()
-            st.experimental_rerun()
+            st.rerun()
 
     else:
         if not (moves.get("A_ready") and moves.get("B_ready")):
