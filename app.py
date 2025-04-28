@@ -211,11 +211,13 @@ with tabs[1]:
             except Exception as e:
                 st.error(f"❌ Gagal mengambil statistik: {e}")
 
-            if st.button("🔄 Main Lagi"):
+# Setelah tampilkan hasil game:
+if st.button("🔄 Main Lagi"):
     try:
         requests.post(f"{BASE_URL}/reset")
     except:
         pass
+    
     reset_all_state()
     
     # --- Otomatis standby lagi setelah reset
@@ -231,4 +233,5 @@ with tabs[1]:
         st.error(f"❌ Error standby ulang: {e}")
     
     st.rerun()
+
 
