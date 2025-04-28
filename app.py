@@ -212,7 +212,7 @@ with tabs[1]:  # Tab Game
                 st.error(f"❌ Gagal mengambil statistik: {e}")
 
             # Tombol Main Lagi
-       if st.button("🔄 Main Lagi"):
+       if st.button("🔄 Main Lagi")
     try:
         requests.post(f"{BASE_URL}/reset")
         st.success("✅ Game berhasil di-reset!")
