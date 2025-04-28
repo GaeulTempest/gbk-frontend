@@ -93,7 +93,7 @@ def polling_result():
                 break
 
             time.sleep(2)
-            st.experimental_rerun()
+            st.rerun()
 
 # --- Proses Awal: Standby ---
 moves = requests.get(f"{BASE_URL}/get_moves").json()
