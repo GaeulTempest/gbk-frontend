@@ -13,7 +13,8 @@ import statistics
 BASE_URL = "https://web-production-7e17f.up.railway.app"
 
 # Setup page
-st.set_page_config(page_title="\u270c\ufe0f Gunting Batu Kertas Online", page_icon="\ud83c\udfae")
+st.set_page_config(page_title="✌️ Gunting Batu Kertas Online", page_icon="🎮")
+
 
 # Styling
 st.markdown("""
