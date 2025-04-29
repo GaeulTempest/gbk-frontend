@@ -5,6 +5,10 @@ import cv2
 import av
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import mediapipe as mp
+from collections import deque
+import statistics
+
+# Note: Ini adalah implementasi Multi-frame Stabilization untuk Gesture Detection
 
 BASE_URL = "https://web-production-7e17f.up.railway.app"
 
@@ -35,6 +39,24 @@ if "manual_mode" not in st.session_state:
     st.session_state.manual_mode = False
 
 # Gesture Detection
+class GestureStabilizer:
+    def __init__(self, max_frames=10):
+        self.max_frames = max_frames
+        self.gesture_queue = deque(maxlen=max_frames)
+
+    def update(self, gesture):
+        if gesture:
+            self.gesture_queue.append(gesture)
+
+    def get_stable_gesture(self):
+        if not self.gesture_queue:
+            return None
+        try:
+            stable = statistics.mode(self.gesture_queue)
+            return stable
+        except statistics.StatisticsError:
+            return self.gesture_queue[-1]
+
 def detect_gesture(hand_landmarks, handedness):
     fingers = []
     if handedness == "Right":
@@ -61,6 +83,7 @@ class VideoProcessor(VideoTransformerBase):
         self.hands = self.mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.7)
         self.mp_draw = mp.solutions.drawing_utils
         self.handedness = None
+        self.stabilizer = GestureStabilizer(max_frames=10)
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
@@ -71,9 +94,14 @@ class VideoProcessor(VideoTransformerBase):
             hand_landmarks = results.multi_hand_landmarks[0]
             self.handedness = results.multi_handedness[0].classification[0].label
             self.mp_draw.draw_landmarks(img, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
-            self.gesture = detect_gesture(hand_landmarks, self.handedness)
+            detected_gesture = detect_gesture(hand_landmarks, self.handedness)
+            self.stabilizer.update(detected_gesture)
+            stable_gesture = self.stabilizer.get_stable_gesture()
+            if stable_gesture:
+                self.gesture = stable_gesture
         else:
-            self.gesture = "Tidak dikenali"
+            self.stabilizer.update("Tidak dikenali")
+            self.gesture = self.stabilizer.get_stable_gesture()
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
@@ -87,7 +115,7 @@ def reset_all_state():
 # Tabs
 tabs = st.tabs(["🚀 Standby", "🎮 Game"])
 
-with tabs[0]:  # Standby
+with tabs[0]:
     player = st.selectbox("Pilih peran kamu:", ["A", "B"])
 
     try:
@@ -115,14 +143,13 @@ with tabs[0]:  # Standby
     else:
         st.success("✅ Kamu sudah standby!")
 
-with tabs[1]:  # Game
+with tabs[1]:
     try:
         moves = requests.get(f"{BASE_URL}/get_moves").json()
     except:
         moves = {}
 
     if st.session_state.result_shown:
-        # --- Tampilkan hasil pertandingan ---
         result = st.session_state.result_data
         winner = result["result"]
         move_a = result["A"]
