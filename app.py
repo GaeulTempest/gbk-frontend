@@ -8,8 +8,6 @@ import mediapipe as mp
 from collections import deque
 import statistics
 
-# Note: Ini adalah implementasi Multi-frame Stabilization untuk Gesture Detection
-
 BASE_URL = "https://web-production-7e17f.up.railway.app"
 
 # Setup page
@@ -38,24 +36,56 @@ if "countdown_started" not in st.session_state:
 if "manual_mode" not in st.session_state:
     st.session_state.manual_mode = False
 
-# Gesture Detection
 class GestureStabilizer:
     def __init__(self, max_frames=10):
         self.max_frames = max_frames
         self.gesture_queue = deque(maxlen=max_frames)
 
     def update(self, gesture):
+        """Masukkan gesture baru ke antrian."""
         if gesture:
             self.gesture_queue.append(gesture)
 
     def get_stable_gesture(self):
+        """Kembalikan gesture paling sering dalam antrian."""
         if not self.gesture_queue:
             return None
         try:
             stable = statistics.mode(self.gesture_queue)
             return stable
         except statistics.StatisticsError:
+            # Kalau mode tidak jelas (semua beda-beda), kembalikan gesture terakhir
             return self.gesture_queue[-1]
+
+class VideoProcessor(VideoTransformerBase):
+    def __init__(self):
+        self.gesture = "Belum ada"
+        self.mp_hands = mp.solutions.hands
+        self.hands = self.mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.7)
+        self.mp_draw = mp.solutions.drawing_utils
+        self.handedness = None
+        self.stabilizer = GestureStabilizer(max_frames=10)
+
+    def recv(self, frame):
+        img = frame.to_ndarray(format="bgr24")
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        results = self.hands.process(img_rgb)
+
+        if results.multi_hand_landmarks and results.multi_handedness:
+            hand_landmarks = results.multi_hand_landmarks[0]
+            self.handedness = results.multi_handedness[0].classification[0].label
+            self.mp_draw.draw_landmarks(img, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
+
+            detected_gesture = detect_gesture(hand_landmarks, self.handedness)
+            self.stabilizer.update(detected_gesture)
+            stable_gesture = self.stabilizer.get_stable_gesture()
+            if stable_gesture:
+                self.gesture = stable_gesture
+        else:
+            self.stabilizer.update("Tidak dikenali")
+            self.gesture = self.stabilizer.get_stable_gesture()
+
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 def detect_gesture(hand_landmarks, handedness):
     fingers = []
@@ -76,38 +106,46 @@ def detect_gesture(hand_landmarks, handedness):
     else:
         return "Tidak dikenali"
 
-class VideoProcessor(VideoTransformerBase):
-    def __init__(self):
-        self.gesture = "Belum ada"
-        self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.7)
-        self.mp_draw = mp.solutions.drawing_utils
-        self.handedness = None
-        self.stabilizer = GestureStabilizer(max_frames=10)  # <-- Multi-frame Stabilizer diaktifkan
+def reset_all_state():
+    st.session_state.gesture_sent = False
+    st.session_state.result_shown = False
+    st.session_state.result_data = None
+    st.session_state.countdown_started = False
+    st.session_state.manual_mode = False
 
-    def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        results = self.hands.process(img_rgb)
+# Tabs
+tabs = st.tabs(["🚀 Standby", "🎮 Game"])
 
-        # Jika tangan terdeteksi
-        if results.multi_hand_landmarks and results.multi_handedness:
-            hand_landmarks = results.multi_hand_landmarks[0]
-            self.handedness = results.multi_handedness[0].classification[0].label
-            self.mp_draw.draw_landmarks(img, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
+# Standby Tab
+with tabs[0]:  # Standby
+    player = st.selectbox("Pilih peran kamu:", ["A", "B"])
 
-            detected_gesture = detect_gesture(hand_landmarks, self.handedness)
-            self.stabilizer.update(detected_gesture)
-            stable_gesture = self.stabilizer.get_stable_gesture()
-            if stable_gesture:
-                self.gesture = stable_gesture
-        else:
-            self.stabilizer.update("Tidak dikenali")
-            self.gesture = self.stabilizer.get_stable_gesture()
+    try:
+        moves = requests.get(f"{BASE_URL}/get_moves").json()
+    except Exception as e:
+        st.error(f"🔌 Gagal ambil data server: {e}")
+        moves = {}
 
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
+    ready_players = []
+    if moves.get("A_ready"):
+        ready_players.append("Player A")
+    if moves.get("B_ready"):
+        ready_players.append("Player B")
 
-# Tombol Kirim Gesture Manual & Otomatis
+    st.info(f"👥 Pemain Standby: {', '.join(ready_players) if ready_players else 'Belum ada'}")
+
+    player_ready_key = f"{player}_ready"
+    if not moves.get(player_ready_key):
+        if st.button("🚀 Klik Ready"):
+            try:
+                requests.post(f"{BASE_URL}/standby", json={"player": player})
+                st.success("✅ Kamu sudah ready!")
+            except Exception as e:
+                st.error(f"❌ Error standby: {e}")
+    else:
+        st.success("✅ Kamu sudah standby!")
+
+# Game Tab
 with tabs[1]:  # Game
     try:
         moves = requests.get(f"{BASE_URL}/get_moves").json()
@@ -166,7 +204,6 @@ with tabs[1]:  # Game
                     gesture_now = ctx.video_processor.gesture
                     st.success(f"🖐️ Gesture terdeteksi: {gesture_now}")
 
-                    # Tombol kirim gesture otomatis
                     if not st.session_state.gesture_sent:
                         if not st.session_state.countdown_started:
                             st.session_state.countdown_started = True
@@ -184,7 +221,6 @@ with tabs[1]:  # Game
                             else:
                                 st.warning("✋ Gesture belum jelas. Gunakan tombol manual.")
 
-                    # Tombol kirim gesture manual
                     if not st.session_state.gesture_sent:
                         if st.button("📤 Kirim Manual"):
                             if gesture_now in ["Batu", "Gunting", "Kertas"]:
@@ -199,7 +235,6 @@ with tabs[1]:  # Game
             else:
                 st.warning("🚫 Kamera tidak aktif!")
 
-            # Cek jika gesture sudah dikirim baru tunggu hasil
             if st.session_state.gesture_sent and not st.session_state.result_shown:
                 with st.spinner("⏳ Menunggu hasil pertandingan..."):
                     while True:
