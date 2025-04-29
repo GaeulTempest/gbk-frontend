@@ -15,7 +15,6 @@ BASE_URL = "https://web-production-7e17f.up.railway.app"
 # Setup page
 st.set_page_config(page_title="✌️ Gunting Batu Kertas Online", page_icon="🎮")
 
-
 # Styling
 st.markdown("""
     <style>
@@ -25,7 +24,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="title">Gunting Batu Kertas</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Multiplayer Online Game \ud83c\udfae</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Multiplayer Online Game 🎮</div>', unsafe_allow_html=True)
 
 # Session states
 if "gesture_sent" not in st.session_state:
@@ -84,7 +83,7 @@ class VideoProcessor(VideoTransformerBase):
         self.hands = self.mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.7)
         self.mp_draw = mp.solutions.drawing_utils
         self.handedness = None
-        self.stabilizer = GestureStabilizer(max_frames=10)  # <-- Multi-frame Stabilizer diaktifkan
+        self.stabilizer = GestureStabilizer(max_frames=10)
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
@@ -114,7 +113,7 @@ def reset_all_state():
     st.session_state.manual_mode = False
 
 # Tabs
-tabs = st.tabs(["\ud83d\ude80 Standby", "\ud83c\udfae Game"])
+tabs = st.tabs(["🚀 Standby", "🎮 Game"])
 
 with tabs[0]:
     player = st.selectbox("Pilih peran kamu:", ["A", "B"])
@@ -122,7 +121,7 @@ with tabs[0]:
     try:
         moves = requests.get(f"{BASE_URL}/get_moves").json()
     except Exception as e:
-        st.error(f"\ud83d\udd0c Gagal ambil data server: {e}")
+        st.error(f"🔌 Gagal ambil data server: {e}")
         moves = {}
 
     ready_players = []
@@ -131,18 +130,18 @@ with tabs[0]:
     if moves.get("B_ready"):
         ready_players.append("Player B")
 
-    st.info(f"\ud83d\udc65 Pemain Standby: {', '.join(ready_players) if ready_players else 'Belum ada'}")
+    st.info(f"👥 Pemain Standby: {', '.join(ready_players) if ready_players else 'Belum ada'}")
 
     player_ready_key = f"{player}_ready"
     if not moves.get(player_ready_key):
-        if st.button("\ud83d\ude80 Klik Ready"):
+        if st.button("🚀 Klik Ready"):
             try:
                 requests.post(f"{BASE_URL}/standby", json={"player": player})
-                st.success("\u2705 Kamu sudah ready!")
+                st.success("✅ Kamu sudah ready!")
             except Exception as e:
-                st.error(f"\u274c Error standby: {e}")
+                st.error(f"❌ Error standby: {e}")
     else:
-        st.success("\u2705 Kamu sudah standby!")
+        st.success("✅ Kamu sudah standby!")
 
 with tabs[1]:
     try:
@@ -161,35 +160,35 @@ with tabs[1]:
         else:
             st.balloons()
 
-        st.success(f"\ud83c\udfc6 {winner}")
-        st.info(f"\ud83c\udfae Player A: {move_a}\n\ud83c\udfae Player B: {move_b}")
+        st.success(f"🏆 {winner}")
+        st.info(f"🎮 Player A: {move_a}\n🎮 Player B: {move_b}")
 
         try:
             stats = requests.get(f"{BASE_URL}/stats").json()
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("\ud83c\udfc6 Player A Menang", stats["Player A"]["win"])
-                st.metric("\u274c Player A Kalah", stats["Player A"]["lose"])
-                st.metric("\ud83e\udd1d Player A Seri", stats["Player A"]["draw"])
+                st.metric("🏆 Player A Menang", stats["Player A"]["win"])
+                st.metric("❌ Player A Kalah", stats["Player A"]["lose"])
+                st.metric("🤝 Player A Seri", stats["Player A"]["draw"])
             with col2:
-                st.metric("\ud83c\udfc6 Player B Menang", stats["Player B"]["win"])
-                st.metric("\u274c Player B Kalah", stats["Player B"]["lose"])
-                st.metric("\ud83e\udd1d Player B Seri", stats["Player B"]["draw"])
+                st.metric("🏆 Player B Menang", stats["Player B"]["win"])
+                st.metric("❌ Player B Kalah", stats["Player B"]["lose"])
+                st.metric("🤝 Player B Seri", stats["Player B"]["draw"])
         except:
-            st.error("\u274c Gagal ambil statistik.")
+            st.error("❌ Gagal ambil statistik.")
 
-        if st.button("\ud83d\udd04 Main Lagi"):
+        if st.button("🔄 Main Lagi"):
             try:
                 requests.post(f"{BASE_URL}/reset")
-                st.success("\u2705 Game direset, silakan Ready lagi.")
+                st.success("✅ Game direset, silakan Ready lagi.")
             except:
-                st.error("\u274c Gagal reset game.")
+                st.error("❌ Gagal reset game.")
             reset_all_state()
             st.rerun()
 
     else:
         if not (moves.get("A_ready") and moves.get("B_ready")):
-            st.warning("\u23f3 Menunggu semua pemain Ready...")
+            st.warning("⏳ Menunggu semua pemain Ready...")
         else:
             ctx = webrtc_streamer(
                 key="handtracking",
@@ -200,41 +199,41 @@ with tabs[1]:
             if ctx and ctx.state.playing:
                 if ctx.video_processor:
                     gesture_now = ctx.video_processor.gesture
-                    st.success(f"\ud83d\udc50 Gesture terdeteksi: {gesture_now}")
+                    st.success(f"🖐️ Gesture terdeteksi: {gesture_now}")
 
                     if not st.session_state.gesture_sent:
                         if not st.session_state.countdown_started:
                             st.session_state.countdown_started = True
 
                         if st.session_state.countdown_started:
-                            with st.spinner("\u231b Countdown 3 detik..."):
+                            with st.spinner("⌛ Countdown 3 detik..."):
                                 time.sleep(3)
                             if gesture_now in ["Batu", "Gunting", "Kertas"]:
                                 try:
                                     requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture_now})
-                                    st.success(f"\u2705 Gerakan '{gesture_now}' berhasil dikirim otomatis!")
+                                    st.success(f"✅ Gerakan '{gesture_now}' berhasil dikirim otomatis!")
                                     st.session_state.gesture_sent = True
                                 except:
-                                    st.error("\u274c Gagal kirim otomatis.")
+                                    st.error("❌ Gagal kirim otomatis.")
                             else:
-                                st.warning("\u270b Gesture belum jelas. Gunakan tombol manual.")
+                                st.warning("✋ Gesture belum jelas. Gunakan tombol manual.")
 
                     if not st.session_state.gesture_sent:
-                        if st.button("\ud83d\udce4 Kirim Manual"):
+                        if st.button("📤 Kirim Manual"):
                             if gesture_now in ["Batu", "Gunting", "Kertas"]:
                                 try:
                                     requests.post(f"{BASE_URL}/submit", json={"player": player, "move": gesture_now})
-                                    st.success(f"\u2705 Gerakan '{gesture_now}' berhasil dikirim manual!")
+                                    st.success(f"✅ Gerakan '{gesture_now}' berhasil dikirim manual!")
                                     st.session_state.gesture_sent = True
                                 except:
-                                    st.error("\u274c Gagal kirim manual.")
+                                    st.error("❌ Gagal kirim manual.")
                             else:
-                                st.warning("\u270b Gesture belum jelas.")
+                                st.warning("✋ Gesture belum jelas.")
             else:
-                st.warning("\ud83d\udeab Kamera tidak aktif!")
+                st.warning("🚫 Kamera tidak aktif!")
 
             if st.session_state.gesture_sent and not st.session_state.result_shown:
-                with st.spinner("\u23f3 Menunggu hasil pertandingan..."):
+                with st.spinner("⏳ Menunggu hasil pertandingan..."):
                     while True:
                         try:
                             result = requests.get(f"{BASE_URL}/result").json()
