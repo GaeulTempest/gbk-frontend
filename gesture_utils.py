@@ -1,55 +1,65 @@
-import cv2
+# ----------------- gesture_utils.py -----------------
+"""Common gesture detection utilities (single source of truth).
+
+Uses Mediapipe Hands to classify ROCK/PAPER/SCISSORS based on finger state.
+Includes GestureStabilizer to smooth out frame‑to‑frame noise.
+"""
+
+from collections import deque, Counter
+from enum import Enum
+from typing import Deque, Optional
+
 import mediapipe as mp
+import numpy as np
 
 mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.7)
-mp_draw = mp.solutions.drawing_utils
 
-def get_finger_count(frame):
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    result = hands.process(rgb)
-    gesture = "Tidak dikenali"
-    annotated_frame = frame.copy()
+class RPSMove(str, Enum):
+    ROCK = "rock"
+    PAPER = "paper"
+    SCISSORS = "scissors"
+    NONE = "none"  # indeterminate / no hand
 
-    if result.multi_hand_landmarks and result.multi_handedness:
-        hand = result.multi_hand_landmarks[0]
-        handedness = result.multi_handedness[0].classification[0].label  # "Left" atau "Right"
-        fingers = []
 
-        # Thumb detection lebih akurat tergantung tangan kiri/kanan
-        if handedness == "Right":
-            if hand.landmark[4].x < hand.landmark[3].x:
-                fingers.append(1)
-            else:
-                fingers.append(0)
-        else:  # Tangan kiri
-            if hand.landmark[4].x > hand.landmark[3].x:
-                fingers.append(1)
-            else:
-                fingers.append(0)
+def _classify_from_landmarks(landmarks) -> RPSMove:
+    """Return move based on landmarks geometry (simple heuristic)."""
+    if landmarks is None:
+        return RPSMove.NONE
 
-        # 4 jari lainnya
-        for tip in [8, 12, 16, 20]:
-            if hand.landmark[tip].y < hand.landmark[tip - 2].y:
-                fingers.append(1)
-            else:
-                fingers.append(0)
+    # Landmark indexes for fingertips (except thumb tip which uses x‑axis)
+    fingertips = [8, 12, 16, 20]
+    extended = 0
+    for idx in fingertips:
+        tip = landmarks.landmark[idx]
+        pip = landmarks.landmark[idx - 2]
+        if tip.y < pip.y:  # finger extended
+            extended += 1
 
-        count = sum(fingers)
+    thumb_tip = landmarks.landmark[4]
+    thumb_ip = landmarks.landmark[3]
+    thumb_extended = thumb_tip.x > thumb_ip.x
 
-        # Mapping jumlah jari ke gesture
-        if count == 0:
-            gesture = "Batu"
-        elif count == 2:
-            gesture = "Gunting"
-        elif count == 5:
-            gesture = "Kertas"
-        else:
-            gesture = "Tidak dikenali"
+    if extended == 0 and not thumb_extended:
+        return RPSMove.ROCK
+    if extended == 4 and thumb_extended:
+        return RPSMove.PAPER
+    if extended == 2 and not thumb_extended:
+        return RPSMove.SCISSORS
+    return RPSMove.NONE
 
-        # Gambar tangan
-        mp_draw.draw_landmarks(annotated_frame, hand, mp_hands.HAND_CONNECTIONS)
 
-        return gesture, annotated_frame
+class GestureStabilizer:
+    """Return the most frequent move over N recent frames."""
 
-    return None, frame
+    def __init__(self, window: int = 10):
+        self.window: Deque[RPSMove] = deque(maxlen=window)
+
+    def update(self, move: RPSMove) -> RPSMove:
+        self.window.append(move)
+        if len(self.window) < self.window.maxlen:
+            return RPSMove.NONE
+        most_common, freq = Counter(self.window).most_common(1)[0]
+        return most_common if freq > self.window.maxlen // 2 else RPSMove.NONE
+
+
+__all__ = ["RPSMove", "GestureStabilizer", "_classify_from_landmarks"]
