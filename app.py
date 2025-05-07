@@ -50,12 +50,12 @@ with tab_standby:
             st.session_state.game_id = res["game_id"]
     with c2:
         join_id = st.text_input("Room ID")
-        if st.button("Join Room") and join_id and st.session_state.player_name:
-            encoded_id = urllib.parse.quote(join_id.strip())  # Encoding ID untuk memastikan URL valid
-            res = api_post(f"/join/{encoded_id}", player_name=st.session_state.player_name)  # Kirim nama pemain ke backend
-            st.session_state.update(game_id=join_id,
-                                    player_id=res["player_id"],
-                                    role="GUEST")
+if st.button("Join Room") and join_id and st.session_state.player_name:
+    encoded_id = urllib.parse.quote(join_id.strip())  # Encoding ID untuk memastikan URL valid
+    res = api_post(f"/join/{encoded_id}", player_name=st.session_state.player_name)  # Kirim nama pemain ke backend
+    st.session_state.update(game_id=join_id,
+                            player_id=res["player_id"],
+                            role="GUEST")
 
     if st.session_state.game_id:
         st.success(f"Connected as **{st.session_state.role}** | Room: `{st.session_state.game_id}`")
