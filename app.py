@@ -6,6 +6,24 @@ import websockets
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 from gesture_utils import RPSMove, GestureStabilizer, _classify_from_landmarks
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+@app.post("/create_game")
+def create_game():
+    try:
+        new = Match(id=str(uuid.uuid4()), p1_id=str(uuid.uuid4()))
+        with Session(engine) as sess:
+            sess.add(new)
+            sess.commit()
+        logger.info(f"Game created: {new.id}")
+        return {"game_id": new.id, "player_id": new.p1_id}
+    except Exception as e:
+        logger.error(f"Error creating game: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create game")
+
 # ---------- Konfigurasi URL backend ----------
 API_URL = (
     st.secrets.get("API_URL")              # via secrets.toml jika ada
