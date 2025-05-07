@@ -115,34 +115,4 @@ with tab_game:
     ctx = webrtc_streamer(key="rps", mode=WebRtcMode.SENDONLY,
                           video_processor_factory=VP)
     current_move = ctx.video_processor.last_move if ctx.video_processor else RPSMove.NONE
-    st.write(f"Current gesture → **{current_move.value.upper()}**")
-
-    # Countdown and submit move button
-    placeholder = st.empty()
-    if st.button("Shoot!"):
-        async def shoot():
-            for i in range(3, 0, -1):
-                placeholder.markdown(f"### Prepare… {i}")
-                await asyncio.sleep(1)
-            placeholder.markdown("### Go!")
-            api_post(f"/move_ws/{st.session_state.game_id}",
-                     player_id=st.session_state.player_id,
-                     move=current_move.value)
-
-        asyncio.create_task(shoot())
-
-    # Handle game results
-    async def show_result():
-        while True:
-            state = await ws.recv()
-            if state.get("winner"):
-                if state["winner"] == "draw":
-                    st.balloons(); st.success("Draw!")
-                elif state["winner"] == st.session_state.player_id:
-                    st.balloons(); st.success("You WIN! 🏆")
-                else:
-                    st.error("You lose 😢")
-                break
-
-    if "result_task" not in st.session_state:
-        st.session_state.result_task = asyncio.create_task(show_result())
+    st.write(f"Current gesture →
