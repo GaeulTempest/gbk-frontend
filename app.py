@@ -1,44 +1,23 @@
-# ----------------- app.py -----------------
-"""Streamlit front‑end (gesture + WebSocket) siap konek ke backend Railway."""
-
-import os, asyncio, json, requests, av, mediapipe as mp, streamlit as st
+import os
+import asyncio
+import requests
+import streamlit as st
 import websockets
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 from gesture_utils import RPSMove, GestureStabilizer, _classify_from_landmarks
 
-import logging
+# API URL for backend (ensure the correct URL is set here)
+API_URL = "https://web-production-7e17f.up.railway.app"
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-@app.post("/create_game")
-def create_game():
-    try:
-        new = Match(id=str(uuid.uuid4()), p1_id=str(uuid.uuid4()))
-        with Session(engine) as sess:
-            sess.add(new)
-            sess.commit()
-        logger.info(f"Game created: {new.id}")
-        return {"game_id": new.id, "player_id": new.p1_id}
-    except Exception as e:
-        logger.error(f"Error creating game: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create game")
-
-# ---------- Konfigurasi URL backend ----------
-API_URL = (
-    st.secrets.get("API_URL")              # via secrets.toml jika ada
-    or os.getenv("API_URL")                # via environment variable
-    or "https://web-production-7e17f.up.railway.app"   # fallback default
-)
-
+# Streamlit page configuration
 st.set_page_config("RPS Gesture Game", "✊")
 st.title("✊ Rock‑Paper‑Scissors Online")
 
-# ---------- State ----------
+# Session state for game details
 for k in ("game_id", "player_id", "role"):
     st.session_state.setdefault(k, None)
 
-# ---------- Helper HTTP ----------
+# Helper HTTP function to post requests to backend
 def api_post(path, **kw):
     url = f"{API_URL}{path}"
     try:
@@ -46,18 +25,20 @@ def api_post(path, **kw):
         resp.raise_for_status()
         return resp.json()
     except requests.exceptions.RequestException as e:
-        st.error(f"⚠️ Gagal menghubungi backend:\n`{url}`\n\n{e}")
+        st.error(f"⚠️ Failed to contact backend: `{url}`\n\n{e}")
         st.stop()
 
-# ---------- Tabs ----------
+# Tabs for UI
 tab_standby, tab_game = st.tabs(["🔗 Standby", "🎮 Game"])
 
+# Standby tab for creating or joining a room
 with tab_standby:
     c1, c2 = st.columns(2)
     with c1:
         if st.button("Create Room"):
             res = api_post("/create_game")
             st.session_state.update(res, role="HOST")
+            st.session_state.game_id = res["game_id"]
     with c2:
         join_id = st.text_input("Room ID")
         if st.button("Join Room") and join_id:
@@ -65,52 +46,57 @@ with tab_standby:
             st.session_state.update(game_id=join_id,
                                     player_id=res["player_id"],
                                     role="GUEST")
+
     if st.session_state.game_id:
         st.success(f"Connected as **{st.session_state.role}** | Room: `{st.session_state.game_id}`")
 
+# Game tab for displaying and interacting with the game
 with tab_game:
     if not st.session_state.game_id:
-        st.info("Buat/join room dulu di tab Standby.")
+        st.info("Please create or join a room in the Standby tab.")
         st.stop()
 
-    # ---------- WebSocket listener ----------
+    # WebSocket connection setup
     ws_uri = API_URL.replace("https", "wss", 1).replace("http", "ws", 1) + \
              f"/ws/{st.session_state.game_id}/{st.session_state.player_id}"
 
-    queue: "asyncio.Queue" = asyncio.Queue()
-
+    # Ensure that websockets are properly handled in the event loop
     async def listener():
         async with websockets.connect(ws_uri, ping_interval=20, ping_timeout=10) as ws:
             while True:
                 try:
-                    await queue.put(json.loads(await ws.recv()))
+                    message = await ws.recv()
+                    st.session_state.game_state = message  # Update game state with message
+                    st.experimental_rerun()  # Trigger a rerun of the app
                 except websockets.ConnectionClosed:
                     break
 
+    # Create an asyncio task for listening
     if "ws_task" not in st.session_state:
-        st.session_state.ws_task = asyncio.create_task(listener())
+        asyncio.create_task(listener())
 
-    # ---------- Webcam gesture ----------
+    # Display the current gesture and waiting for a player to shoot
     class VP(VideoProcessorBase):
         def __init__(self):
-            self.detector = mp.solutions.hands.Hands(max_num_hands=1)
-            self.stab = GestureStabilizer()
+            self.detector = GestureStabilizer()
             self.last_move = RPSMove.NONE
+
         def recv(self, frame):
             img = frame.to_ndarray(format="bgr24")
-            res = self.detector.process(img[:, :, ::-1])
+            res = self.detector.process(img)
             move = RPSMove.NONE
-            if res.multi_hand_landmarks:
-                move = _classify_from_landmarks(res.multi_hand_landmarks[0])
-            self.last_move = self.stab.update(move)
+            if res:
+                move = _classify_from_landmarks(res)
+            self.last_move = self.detector.update(move)
             return av.VideoFrame.from_ndarray(img, format="bgr24")
 
+    # WebRTC stream setup for gesture recognition
     ctx = webrtc_streamer(key="rps", mode=WebRtcMode.SENDONLY,
                           video_processor_factory=VP)
     current_move = ctx.video_processor.last_move if ctx.video_processor else RPSMove.NONE
     st.write(f"Current gesture → **{current_move.value.upper()}**")
 
-    # ---------- Countdown & submit ----------
+    # Countdown and submit move button
     placeholder = st.empty()
     if st.button("Shoot!"):
         async def shoot():
@@ -121,12 +107,13 @@ with tab_game:
             api_post(f"/move_ws/{st.session_state.game_id}",
                      player_id=st.session_state.player_id,
                      move=current_move.value)
+
         asyncio.create_task(shoot())
 
-    # ---------- Tampilkan hasil ----------
+    # Handle game results
     async def show_result():
         while True:
-            state = await queue.get()
+            state = await ws.recv()
             if state.get("winner"):
                 if state["winner"] == "draw":
                     st.balloons(); st.success("Draw!")
@@ -135,5 +122,6 @@ with tab_game:
                 else:
                     st.error("You lose 😢")
                 break
+
     if "result_task" not in st.session_state:
         st.session_state.result_task = asyncio.create_task(show_result())
