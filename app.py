@@ -5,6 +5,7 @@ import streamlit as st
 import websockets
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 from gesture_utils import RPSMove, GestureStabilizer, _classify_from_landmarks
+import urllib.parse
 
 # API URL for backend (ensure the correct URL is set here)
 API_URL = "https://web-production-7e17f.up.railway.app"
@@ -14,7 +15,7 @@ st.set_page_config("RPS Gesture Game", "✊")
 st.title("✊ Rock‑Paper‑Scissors Online")
 
 # Session state for game details
-for k in ("game_id", "player_id", "role"):
+for k in ("game_id", "player_id", "role", "player_name"):
     st.session_state.setdefault(k, None)
 
 # Helper HTTP function to post requests to backend
@@ -33,16 +34,25 @@ tab_standby, tab_game = st.tabs(["🔗 Standby", "🎮 Game"])
 
 # Standby tab for creating or joining a room
 with tab_standby:
+    # Input for player name
+    player_name = st.text_input("Enter your name", max_chars=20)
+    if player_name:
+        st.session_state.player_name = player_name  # Save player name to session_state
+
+    if st.session_state.player_name is None:
+        st.warning("Please enter your name before joining or creating a room.")
+
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("Create Room"):
-            res = api_post("/create_game")
+        if st.button("Create Room") and st.session_state.player_name:
+            res = api_post("/create_game", player_name=st.session_state.player_name)  # Send name to backend
             st.session_state.update(res, role="HOST")
             st.session_state.game_id = res["game_id"]
     with c2:
         join_id = st.text_input("Room ID")
-        if st.button("Join Room") and join_id:
-            res = api_post(f"/join/{join_id}")
+        if st.button("Join Room") and join_id and st.session_state.player_name:
+            encoded_id = urllib.parse.quote(join_id)  # Ensure the room ID is URL-safe
+            res = api_post(f"/join/{encoded_id}", player_name=st.session_state.player_name)  # Send name to backend
             st.session_state.update(game_id=join_id,
                                     player_id=res["player_id"],
                                     role="GUEST")
