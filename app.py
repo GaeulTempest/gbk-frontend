@@ -34,32 +34,32 @@ tab_standby, tab_game = st.tabs(["🔗 Standby", "🎮 Game"])
 
 # Standby tab for creating or joining a room
 with tab_standby:
-  # Input nama pemain
-player_name = st.text_input("Enter your name", max_chars=20)
-if player_name:
-    st.session_state.player_name = player_name  # Simpan nama pemain di session_state
+    # Input nama pemain
+    player_name = st.text_input("Enter your name", max_chars=20)
+    if player_name:
+        st.session_state.player_name = player_name  # Simpan nama pemain di session_state
 
-# Pastikan nama pemain telah diisi sebelum membuat atau bergabung dengan room
-if st.session_state.player_name is None or st.session_state.player_name == "":
-    st.warning("Please enter your name before creating or joining a room.")
+    # Pastikan nama pemain telah diisi sebelum membuat atau bergabung dengan room
+    if st.session_state.player_name is None or st.session_state.player_name == "":
+        st.warning("Please enter your name before creating or joining a room.")
 
-c1, c2 = st.columns(2)
-with c1:
-    if st.button("Create Room") and st.session_state.player_name:
-        res = api_post("/create_game", player_name=st.session_state.player_name)  # Kirim nama pemain ke backend
-        st.session_state.update(res, role="HOST")
-        st.session_state.game_id = res["game_id"]
-with c2:
-    join_id = st.text_input("Room ID")
-    if st.button("Join Room") and join_id and st.session_state.player_name:
-        encoded_id = urllib.parse.quote(join_id)  # Encoding ID untuk memastikan URL valid
-        res = api_post(f"/join/{encoded_id}", player_name=st.session_state.player_name)  # Kirim nama pemain ke backend
-        st.session_state.update(game_id=join_id,
-                                player_id=res["player_id"],
-                                role="GUEST")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Create Room") and st.session_state.player_name:
+            res = api_post("/create_game", player_name=st.session_state.player_name)  # Kirim nama pemain ke backend
+            st.session_state.update(res, role="HOST")
+            st.session_state.game_id = res["game_id"]
+    with c2:
+        join_id = st.text_input("Room ID")
+        if st.button("Join Room") and join_id and st.session_state.player_name:
+            encoded_id = urllib.parse.quote(join_id)  # Encoding ID untuk memastikan URL valid
+            res = api_post(f"/join/{encoded_id}", player_name=st.session_state.player_name)  # Kirim nama pemain ke backend
+            st.session_state.update(game_id=join_id,
+                                    player_id=res["player_id"],
+                                    role="GUEST")
 
-if st.session_state.game_id:
-    st.success(f"Connected as **{st.session_state.role}** | Room: `{st.session_state.game_id}`")
+    if st.session_state.game_id:
+        st.success(f"Connected as **{st.session_state.role}** | Room: `{st.session_state.game_id}`")
 
 # Game tab for displaying and interacting with the game
 with tab_game:
