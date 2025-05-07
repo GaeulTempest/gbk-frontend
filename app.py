@@ -1,6 +1,10 @@
 import urllib.parse
 import streamlit as st
 import requests
+import asyncio
+import websockets
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
+from gesture_utils import RPSMove, GestureStabilizer, _classify_from_landmarks
 
 # API URL for backend (ensure the correct URL is set here)
 API_URL = "https://web-production-7e17f.up.railway.app"
@@ -140,4 +144,5 @@ with tab_game:
                     st.error("You lose 😢")
                 break
 
-    if "result_task" not in st
+    if "result_task" not in st.session_state:
+        st.session_state.result_task = asyncio.create_task(show_result())
