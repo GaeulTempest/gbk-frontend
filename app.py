@@ -1,11 +1,6 @@
-import os
-import asyncio
-import requests
-import streamlit as st
-import websockets
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
-from gesture_utils import RPSMove, GestureStabilizer, _classify_from_landmarks
 import urllib.parse
+import streamlit as st
+import requests
 
 # API URL for backend (ensure the correct URL is set here)
 API_URL = "https://web-production-7e17f.up.railway.app"
@@ -52,7 +47,7 @@ with tab_standby:
     with c2:
         join_id = st.text_input("Room ID")
         if st.button("Join Room") and join_id and st.session_state.player_name:
-            encoded_id = urllib.parse.quote(join_id)  # Encoding ID untuk memastikan URL valid
+            encoded_id = urllib.parse.quote(join_id.strip())  # Encoding ID untuk memastikan URL valid
             res = api_post(f"/join/{encoded_id}", player_name=st.session_state.player_name)  # Kirim nama pemain ke backend
             st.session_state.update(game_id=join_id,
                                     player_id=res["player_id"],
@@ -145,5 +140,4 @@ with tab_game:
                     st.error("You lose 😢")
                 break
 
-    if "result_task" not in st.session_state:
-        st.session_state.result_task = asyncio.create_task(show_result())
+    if "result_task" not in st
