@@ -67,5 +67,6 @@ with tab_game:
         st.stop()
 
     # WebSocket connection setup
-    ws_uri = API_URL.replace("https", "wss", 1).replace("http", "ws", 1) + \
-             f"/ws/{
+  # WebSocket connection setup
+ws_uri = API_URL.replace("https", "wss", 1).replace("http", "ws", 1) + \
+             f"/ws/{st.session_state.game_id}/{st.session_state.player_id}"
