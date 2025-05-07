@@ -60,20 +60,30 @@ with tab_game:
     ws_uri = API_URL.replace("https", "wss", 1).replace("http", "ws", 1) + \
              f"/ws/{st.session_state.game_id}/{st.session_state.player_id}"
 
+    # Log the WebSocket URL for debugging purposes
+    st.write(f"WebSocket URL: {ws_uri}")
+
     # Listener function to handle WebSocket communication
     async def listener():
-        async with websockets.connect(ws_uri, ping_interval=20, ping_timeout=10) as ws:
-            while True:
-                try:
-                    message = await ws.recv()
-                    st.session_state.game_state = message  # Update game state with message
-                    st.experimental_rerun()  # Trigger a rerun of the app
-                except websockets.ConnectionClosed:
-                    break
+        try:
+            async with websockets.connect(ws_uri, ping_interval=20, ping_timeout=10) as ws:
+                while True:
+                    try:
+                        message = await ws.recv()
+                        st.session_state.game_state = message  # Update game state with message
+                        st.experimental_rerun()  # Trigger a rerun of the app
+                    except websockets.ConnectionClosed:
+                        st.warning("WebSocket connection closed.")
+                        break
+        except websockets.exceptions.InvalidStatus as e:
+            st.error(f"WebSocket Error: {e}")
+            st.stop()
+        except Exception as e:
+            st.error(f"Unexpected Error: {e}")
+            st.stop()
 
-    # Make sure the WebSocket listener runs only once
+    # Ensure the WebSocket listener runs only once
     if "ws_task" not in st.session_state:
-        # Using asyncio.run() to execute listener in the event loop
         asyncio.run(listener())
 
     # Display the current gesture and waiting for a player to shoot
