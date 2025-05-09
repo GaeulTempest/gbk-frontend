@@ -75,17 +75,21 @@ with tab_game:
 
     ensure_ws_running()
 
-    # ---------- tampilan status pemain ----------
-    st.subheader("Players")
-    pls = st.session_state.get("players", {})
-    col1, col2 = st.columns(2)
-    for role, col in zip(("A","B"), (col1,col2)):
-        p = pls.get(role)
-        if p and p["name"]:
-            col.markdown(f"**{role} – {p['name']}**")
-            col.write("✅ Ready" if p["ready"] else "⏳ Not ready")
-        else:
-            col.write(f"*(waiting for Player {role})*")
+# ── tampilan status pemain ───────────────────────────────
+st.subheader("Players")
+
+# pastikan selalu dict
+pls = (st.session_state.get("players") or {})
+
+col1, col2 = st.columns(2)
+for role, col in zip(("A", "B"), (col1, col2)):
+    p = pls.get(role)
+    if p and p.get("name"):
+        col.markdown(f"**{role} – {p['name']}**")
+        col.write("✅ Ready" if p.get("ready") else "⏳ Not ready")
+    else:
+        col.write(f"*(waiting for Player {role})*")
+
 
     # tombol Ready
     if pls.get(st.session_state.role, {}).get("ready") is not True:
