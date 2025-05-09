@@ -81,12 +81,15 @@ with tab_game:
     my_ready = players.get(my_role, {}).get("ready", False)
     both_ready = players.get("A",{}).get("ready") and players.get("B",{}).get("ready")
 
-    # READY button (no experimental_rerun here)
-    if not my_ready and st.button("I'm Ready", key=f"ready_{st.session_state.player_id}"):
-        players.setdefault(my_role, {})["ready"] = True   # local optimistic
-        st.session_state.players = players
-        api_post(f"/ready/{st.session_state.game_id}",
-                 player_id=st.session_state.player_id)
+   # ── tombol Ready (hapus update optimistik, pakai respons backend)
+if not my_ready and st.button("I'm Ready", key=f"ready_{st.session_state.player_id}"):
+    ready_state = api_post(
+        f"/ready/{st.session_state.game_id}",
+        player_id=st.session_state.player_id
+    )
+    st.session_state.players = ready_state["players"]   # ← update pasti
+    # Streamlit otomatis rerun; tidak perlu experimental_rerun()
+
 
     if not both_ready:
         st.info("Waiting until **both players** press *I'm Ready*…")
