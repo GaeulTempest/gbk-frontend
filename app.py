@@ -1,148 +1,82 @@
-import urllib.parse
-import streamlit as st
-import requests
-import asyncio
-import websockets
+import asyncio, urllib.parse, requests, streamlit as st, websockets, av
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 from gesture_utils import RPSMove, GestureStabilizer, _classify_from_landmarks
 
-# API URL for backend
-API_URL = "https://web-production-7e17f.up.railway.app"
+API = "https://web-production-7e17f.up.railway.app"
+st.set_page_config("RPS Gesture Game","✊"); st.title("✊ Rock-Paper-Scissors Online")
 
-# Streamlit page configuration
-st.set_page_config("RPS Gesture Game", "✊")
-st.title("✊ Rock‑Paper‑Scissors Online")
+for k in ("game_id","player_id","role","player_name","players"): st.session_state.setdefault(k,None)
 
-# Session state for game details
-for k in ("game_id", "player_id", "role", "player_name"):
-    st.session_state.setdefault(k, None)
-
-# Helper HTTP function to post requests to backend
 def api_post(path, **kw):
-    url = f"{API_URL}{path}"
-    try:
-        resp = requests.post(url, json=kw, timeout=15)
-        resp.raise_for_status()
-        return resp.json()
-    except requests.exceptions.RequestException as e:
-        st.error(f"⚠️ Failed to contact backend: `{url}`\n\n{e}")
+    r=requests.post(f"{API}{path}", json=kw, timeout=15); r.raise_for_status(); return r.json()
+
+tab_home, tab_game = st.tabs(["🏠 Lobby","🎮 Game"])
+
+# ───── Lobby ────────────────────────────────────────────────────
+with tab_home:
+    name = st.text_input("Your name", key="nm")
+    if name: st.session_state.player_name = name
+
+    if not st.session_state.player_name:
         st.stop()
 
-# Tabs for UI
-tab_standby, tab_game = st.tabs(["🔗 Standby", "🎮 Game"])
-
-# Standby tab for creating or joining a room
-with tab_standby:
-    # Input nama pemain
-    player_name = st.text_input("Enter your name", max_chars=20)
-    if player_name:
-        st.session_state.player_name = player_name  # Simpan nama pemain di session_state
-
-    # Pastikan nama pemain telah diisi sebelum membuat atau bergabung dengan room
-    if st.session_state.player_name is None or st.session_state.player_name == "":
-        st.warning("Please enter your name before creating or joining a room.")
-
-    c1, c2 = st.columns(2)
+    c1,c2 = st.columns(2)
     with c1:
-        if st.button("Create Room") and st.session_state.player_name:
-            res = api_post("/create_game", player_name=st.session_state.player_name)  # Kirim nama pemain ke backend
-            st.session_state.update(res, role="HOST")
-            st.session_state.game_id = res["game_id"]
+        if st.button("Create Room"):
+            res = api_post("/create_game", player_name=name)
+            st.session_state.update(res)
     with c2:
-        join_id = st.text_input("Room ID")
-        if st.button("Join Room") and join_id and st.session_state.player_name:
-            encoded_id = urllib.parse.quote(join_id.strip())  # Encoding ID untuk memastikan URL valid
-            res = api_post(f"/join/{encoded_id}", player_name=st.session_state.player_name)  # Kirim nama pemain ke backend
-            st.session_state.update(game_id=join_id,
-                                    player_id=res["player_id"],
-                                    role="GUEST")
+        room = st.text_input("Room ID")
+        if st.button("Join Room") and room:
+            jid = urllib.parse.quote(room.strip())
+            res = api_post(f"/join/{jid}", player_name=name)
+            st.session_state.update(res, game_id=room)
 
     if st.session_state.game_id:
-        st.success(f"Connected as **{st.session_state.role}** | Room: `{st.session_state.game_id}`")
+        st.success(f"Connected as **{st.session_state.player_name} (Player {st.session_state.role})**\nRoom: `{st.session_state.game_id}`")
 
-# Game tab for displaying and interacting with the game
+# ───── Game ─────────────────────────────────────────────────────
 with tab_game:
-    if not st.session_state.game_id:
-        st.info("Please create or join a room in the Standby tab.")
-        st.stop()
+    if not st.session_state.game_id: st.info("Create / join room dahulu."); st.stop()
 
-    # WebSocket connection setup
-    ws_uri = API_URL.replace("https", "wss", 1).replace("http", "ws", 1) + \
-             f"/ws/{st.session_state.game_id}/{st.session_state.player_id}"
+    ws_uri = API.replace("https","wss",1) + f"/ws/{st.session_state.game_id}/{st.session_state.player_id}"
+    st.caption(f"WS → {ws_uri}")
 
-    # Log the WebSocket URL for debugging purposes
-    st.write(f"WebSocket URL: {ws_uri}")
+    async def ws_listener():
+        async with websockets.connect(ws_uri,ping_interval=20) as ws:
+            while True:
+                data = await ws.recv()
+                st.session_state.players = eval(data) if isinstance(data,str) else data
+                st.experimental_rerun()
 
-    # Listener function to handle WebSocket communication
-    async def listener():
-        try:
-            async with websockets.connect(ws_uri, ping_interval=20, ping_timeout=10) as ws:
-                while True:
-                    try:
-                        message = await ws.recv()
-                        st.session_state.game_state = message  # Update game state with message
-                        st.experimental_rerun()  # Trigger a rerun of the app
-                    except websockets.ConnectionClosed:
-                        st.warning("WebSocket connection closed.")
-                        break
-        except websockets.exceptions.InvalidStatus as e:
-            st.error(f"WebSocket Error: {e}")
-            st.stop()
-        except Exception as e:
-            st.error(f"Unexpected Error: {e}")
-            st.stop()
-
-    # Ensure the WebSocket listener runs only once
     if "ws_task" not in st.session_state:
-        asyncio.run(listener())
+        asyncio.create_task(ws_listener())
 
-    # Display the current gesture and waiting for a player to shoot
+    # tampilkan status pemain
+    st.subheader("Players")
+    pls = st.session_state.get("players",{}).get("players",{})
+    col1,col2 = st.columns(2)
+    for role,col in zip(("A","B"),(col1,col2)):
+        p = pls.get(role)
+        if p and p["name"]:
+            col.write(f"**{role} – {p['name']}**")
+            col.write("✅ Ready" if p["ready"] else "⏳ Not ready")
+        else:
+            col.write(f"*(waiting for Player {role})*")
+
+    # tombol ready
+    if st.button("I'm Ready") and not pls.get(st.session_state.role,{}).get("ready"):
+        api_post(f"/ready/{st.session_state.game_id}", player_id=st.session_state.player_id)
+
+    # —— webcam & shoot ——
     class VP(VideoProcessorBase):
         def __init__(self):
-            self.detector = GestureStabilizer()
-            self.last_move = RPSMove.NONE
-
+            self.det = GestureStabilizer(); self.last = RPSMove.NONE
         def recv(self, frame):
             img = frame.to_ndarray(format="bgr24")
-            res = self.detector.process(img)
-            move = RPSMove.NONE
-            if res:
-                move = _classify_from_landmarks(res)
-            self.last_move = self.detector.update(move)
-            return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-    # WebRTC stream setup for gesture recognition
-    ctx = webrtc_streamer(key="rps", mode=WebRtcMode.SENDONLY,
-                          video_processor_factory=VP)
-    current_move = ctx.video_processor.last_move if ctx.video_processor else RPSMove.NONE
-    st.write(f"Current gesture → **{current_move.value.upper()}**")
-
-    # Countdown and submit move button
-    placeholder = st.empty()
-    if st.button("Shoot!"):
-        async def shoot():
-            for i in range(3, 0, -1):
-                placeholder.markdown(f"### Prepare… {i}")
-                await asyncio.sleep(1)
-            placeholder.markdown("### Go!")
-            api_post(f"/move_ws/{st.session_state.game_id}",
-                     player_id=st.session_state.player_id,
-                     move=current_move.value)
-
-        asyncio.create_task(shoot())
-
-    # Handle game results
-    async def show_result():
-        while True:
-            state = await ws.recv()
-            if state.get("winner"):
-                if state["winner"] == "draw":
-                    st.balloons(); st.success("Draw!")
-                elif state["winner"] == st.session_state.player_id:
-                    st.balloons(); st.success("You WIN! 🏆")
-                else:
-                    st.error("You lose 😢")
-                break
-
-    if "result_task" not in st.session_state:
-        st.session_state.result_task = asyncio.create_task(show_result())
+            move = _classify_from_landmarks(self.det.process(img)) if hasattr(self.det,'process') else RPSMove.NONE
+            self.last = self.det.update(move)
+            return av.VideoFrame.from_ndarray(img,format="bgr24")
+    ctx = webrtc_streamer(key="rps", mode=WebRtcMode.SENDONLY, video_processor_factory=VP)
+    cur = ctx.video_processor.last if ctx.video_processor else RPSMove.NONE
+    st.write(f"Current gesture → **{cur.value.upper()}**")
