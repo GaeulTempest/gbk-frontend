@@ -163,18 +163,18 @@ with tab_game:
             else:
                 st.error(st.session_state.err)
 
-    # polling fallback
+      # polling fallback
     if time.time() - st.session_state.poll_ts > POLL:
         st.session_state.poll_ts = time.time()
         snap = get_state(gid)
         if snap:
             set_players(snap["players"])
 
-    # Start Game
-  if both_ready and not st.session_state.game_started:
-    if st.button("▶️ Start Game"):
-        st.session_state.game_started = True
-        # tidak men‐set need_rerun; kamera dibuat di siklus yang sama
+    # Start Game (gunakan versi yang benar dari atas ↓↓↓)
+    if both_ready and not st.session_state.game_started:
+        if st.button("▶️ Start Game"):
+            st.session_state.game_started = True
+
 
 
     # Camera / gesture
