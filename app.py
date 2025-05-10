@@ -30,12 +30,11 @@ defaults = dict(
     err=None,
     poll_ts=0,
     game_started=False,
-    cam_ctx=None,
 )
 for k, v in defaults.items():
     st.session_state.setdefault(k, v)
 
-# ─── Helper HTTP/WS ──────────────────────────────────
+# ─── Helpers ─────────────────────────────────────────
 def post(path, **data):
     try:
         r = requests.post(f"{API}{path}", json=data, timeout=15)
@@ -58,7 +57,7 @@ def _h(pl):
     return json.dumps(pl, sort_keys=True)
 
 def set_players(pl):
-    # Hanya update state pemain saat LOBBY (belum start game)
+    # Update hanya di fase LOBBY
     if st.session_state.game_started:
         return
     h = _h(pl)
@@ -111,9 +110,10 @@ with tab_game:
         st.info("Create or join a room first.")
         st.stop()
 
-    # Fase 1: lobby sampai kedua pemain ready
+    # Fase LOBBY (sebelum start)
     if not st.session_state.game_started:
-        # ─ WebSocket listener untuk update "Ready" tanpa polling manual
+
+        # WebSocket untuk auto‐update Ready
         if not st.session_state.ws_thread:
             WS_URI = API.replace("https", "wss", 1) + f"/ws/{gid}/{st.session_state.player_id}"
             def ws_loop():
@@ -137,12 +137,12 @@ with tab_game:
             else:
                 st.error(st.session_state.err or "Failed to fetch state")
 
-        # Tampilkan panel pemain
+        # Tampilkan daftar pemain & status
         pl = st.session_state.players
         cA, cB = st.columns(2)
         for role, col in zip(("A", "B"), (cA, cB)):
-            p = pl.get(role)
-            if p and p.get("name"):
+            p = pl.get(role, {})
+            if p.get("name"):
                 col.markdown(f"**{role} – {p['name']}**")
                 col.write("✅ Ready" if p.get("ready") else "⏳ Not ready")
             else:
@@ -160,7 +160,6 @@ with tab_game:
                 else:
                     st.error(st.session_state.err)
 
-        # Tombol Start Game
         def start_cb():
             st.session_state.game_started = True
 
@@ -170,32 +169,30 @@ with tab_game:
             disabled=not both_ready
         )
 
-    # Fase 2: setelah Start Game → langsung inisialisasi kamera sekali
+    # Fase GAME (setelah start) → kita **panggil** webrtc_streamer setiap rerun
     else:
-        if st.session_state.cam_ctx is None:
-            class VP(VideoProcessorBase):
-                def __init__(self):
-                    self.hands = mp.solutions.hands.Hands(max_num_hands=1)
-                    self.stab = GestureStabilizer()
-                    self.last_move = RPSMove.NONE
+        class VP(VideoProcessorBase):
+            def __init__(self):
+                self.hands = mp.solutions.hands.Hands(max_num_hands=1)
+                self.stab = GestureStabilizer()
+                self.last_move = RPSMove.NONE
 
-                def recv(self, frame):
-                    img = frame.to_ndarray(format="bgr24")
-                    res = self.hands.process(img[:, :, ::-1])
-                    mv = (
-                        _classify_from_landmarks(res.multi_hand_landmarks[0])
-                        if res and res.multi_hand_landmarks else RPSMove.NONE
-                    )
-                    self.last_move = self.stab.update(mv)
-                    return av.VideoFrame.from_ndarray(img, format="bgr24")
+            def recv(self, frame):
+                img = frame.to_ndarray(format="bgr24")
+                res = self.hands.process(img[:, :, ::-1])
+                mv = (
+                    _classify_from_landmarks(res.multi_hand_landmarks[0])
+                    if res and res.multi_hand_landmarks else RPSMove.NONE
+                )
+                self.last_move = self.stab.update(mv)
+                return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-            st.session_state.cam_ctx = webrtc_streamer(
-                key="cam",
-                mode=WebRtcMode.SENDRECV,
-                media_stream_constraints={"video": True, "audio": False},
-                video_processor_factory=VP,
-            )
+        ctx = webrtc_streamer(
+            key="cam",                          # sama tiap rerun
+            mode=WebRtcMode.SENDRECV,
+            media_stream_constraints={"video": True, "audio": False},
+            video_processor_factory=VP,
+        )
 
-        ctx = st.session_state.cam_ctx
         mv = ctx.video_processor.last_move if ctx and ctx.video_processor else RPSMove.NONE
         st.write(f"Current gesture → **{mv.value.upper()}**")
