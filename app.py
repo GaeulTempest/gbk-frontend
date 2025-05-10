@@ -3,7 +3,7 @@
     # ------------------------------------------------------------------
     # Camera section ----------------------------------------------------
     # Buat komponen kamera sekali saja, simpan di session_state
-    if "cam_ctx" not in st.session_state:
+if "cam_ctx" not in st.session_state:
         class VP(VideoProcessorBase):
             def __init__(self):
                 self.hands = mp.solutions.hands.Hands(max_num_hands=1)
