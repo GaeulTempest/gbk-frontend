@@ -30,7 +30,8 @@ defaults = dict(
     err=None,
     poll_ts=0,
     game_started=False,
-    cam_ctx=None
+    cam_ctx=None,
+    start_clicked=False,
 )
 for k, v in defaults.items():
     st.session_state.setdefault(k, v)
@@ -111,7 +112,6 @@ with tab_game:
     # WebSocket listener (single thread)
     if not st.session_state.ws_thread:
         WS_URI = API.replace("https", "wss", 1) + f"/ws/{gid}/{st.session_state.player_id}"
-
         def ws_loop():
             async def run():
                 while True:
@@ -123,7 +123,6 @@ with tab_game:
                     except:
                         await asyncio.sleep(1)
             asyncio.run(run())
-
         threading.Thread(target=ws_loop, daemon=True).start()
         st.session_state.ws_thread = True
 
@@ -166,11 +165,11 @@ with tab_game:
         if snap:
             set_players(snap["players"])
 
-    # Start Game: hanya di sini kita rerun
+    # Start Game: set flag, jangan langsung rerun di sini
     if both_ready and not st.session_state.game_started:
         if st.button("▶️ Start Game"):
             st.session_state.game_started = True
-            st.experimental_rerun()
+            st.session_state.start_clicked = True
 
     # Camera & gesture
     if st.session_state.game_started:
@@ -207,3 +206,8 @@ with tab_game:
         st.write(f"Current gesture → **{mv.value.upper()}**")
     else:
         st.info("Both players Ready ➜ tekan **Start Game**.")
+
+# ───────────── Trigger single rerun ────────────────────────
+if st.session_state.start_clicked:
+    st.session_state.start_clicked = False
+    st.experimental_rerun()
