@@ -14,7 +14,7 @@ st.title("✊ Rock-Paper-Scissors Online")
 defaults = dict(
     game_id=None, player_id=None, role=None, player_name=None,
     players={}, _hash="", ws_thread=False, err=None,
-    poll_ts=0, game_started=False, cam_ctx=None, need_rerun=False
+    poll_ts=0, game_started=False, cam_ctx=None
 )
 for k, v in defaults.items():
     st.session_state.setdefault(k, v)
@@ -45,9 +45,6 @@ def set_players(pl):
     if h != st.session_state._hash:
         st.session_state.players = pl
         st.session_state._hash = h
-        # sebelum game dimulai, perubahan memicu rerun
-        if not st.session_state.game_started:
-            st.session_state.need_rerun = True
 
 # ───────────── LOBBY ─────────────────────────
 tab_lobby, tab_game = st.tabs(["🏠 Lobby", "🎮 Game"])
@@ -63,7 +60,7 @@ with tab_lobby:
         if st.button("Create Room"):
             res = post("/create_game", player_name=name)
             if res:
-                st.session_state.update(res, need_rerun=True)
+                st.session_state.update(res)
             else:
                 st.error(st.session_state.err)
     with colJ:
@@ -110,6 +107,7 @@ with tab_game:
                         async with websockets.connect(
                             WS_URI, ping_interval=WS_PING
                         ) as ws:
+                            # kirim ping minimal agar koneksi hidup
                             while True:
                                 data = json.loads(await ws.recv())
                                 set_players(data["players"])
@@ -159,12 +157,11 @@ with tab_game:
         if snap:
             set_players(snap["players"])
 
-    # ─── PATCH START GAME ───────────────────────
+    # Start Game — hanya rerun saat tombol ditekan
     if both_ready and not st.session_state.game_started:
         if st.button("▶️ Start Game"):
             st.session_state.game_started = True
-            # trigger rerun agar kamera di-init ulang
-            st.session_state.need_rerun = True
+            st.experimental_rerun()
 
     # Kamera & gesture
     if st.session_state.game_started:
@@ -200,12 +197,3 @@ with tab_game:
         )
         st.write(f"Current gesture → **{mv.value.upper()}**")
     else:
-        st.info("Both players Ready ➜ tekan **Start Game**.")
-
-# ───────── Global safe rerun ───────────────────
-if st.session_state.need_rerun:
-    st.session_state.need_rerun = False
-    try:
-        st.experimental_rerun()
-    except (RuntimeError, AttributeError):
-        pass
