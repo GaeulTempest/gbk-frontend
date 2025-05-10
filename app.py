@@ -10,6 +10,7 @@ WS_PING = 20
 st.set_page_config("RPS Gesture Game", "✊")
 st.title("✊ Rock-Paper-Scissors Online")
 
+# ─────── Inisialisasi session_state ─────────
 defaults = dict(
     game_id=None, player_id=None, role=None, player_name=None,
     players={}, _hash="", ws_thread=False, err=None,
@@ -18,7 +19,7 @@ defaults = dict(
 for k, v in defaults.items():
     st.session_state.setdefault(k, v)
 
-# ───────────── helpers ─────────────
+# ─────────── Helpers ─────────────────────────
 def post(path, **data):
     try:
         r = requests.post(f"{API}{path}", json=data, timeout=15)
@@ -40,19 +41,15 @@ def get_state(gid):
 def _h(pl): return json.dumps(pl, sort_keys=True)
 
 def set_players(pl):
-    """Perbarui snapshot pemain.
-       Setelah game dimulai, biarkan tanpa rerun agar kamera stabil."""
     h = _h(pl)
     if h != st.session_state._hash:
         st.session_state.players = pl
         st.session_state._hash = h
+        # sebelum game dimulai, perubahan memicu rerun
         if not st.session_state.game_started:
             st.session_state.need_rerun = True
 
-
-# =========================================================
-#  LOBBY
-# =========================================================
+# ───────────── LOBBY ─────────────────────────
 tab_lobby, tab_game = st.tabs(["🏠 Lobby", "🎮 Game"])
 with tab_lobby:
     name = st.text_input("Your name", max_chars=20).strip()
@@ -62,8 +59,6 @@ with tab_lobby:
         st.stop()
 
     colC, colJ = st.columns(2)
-
-    # ─ Create Room
     with colC:
         if st.button("Create Room"):
             res = post("/create_game", player_name=name)
@@ -71,8 +66,6 @@ with tab_lobby:
                 st.session_state.update(res, need_rerun=True)
             else:
                 st.error(st.session_state.err)
-
-    # ─ Join Room
     with colJ:
         room = st.text_input("Room ID")
         if st.button("Join Room") and room:
@@ -97,9 +90,7 @@ with tab_lobby:
             f"Room `{st.session_state.game_id}`"
         )
 
-# =========================================================
-#  GAME
-# =========================================================
+# ───────────── GAME ──────────────────────────
 with tab_game:
     gid = st.session_state.game_id
     if not gid:
@@ -112,7 +103,6 @@ with tab_game:
             API.replace("https", "wss", 1)
             + f"/ws/{gid}/{st.session_state.player_id}"
         )
-
         def ws_loop():
             async def run():
                 while True:
@@ -125,13 +115,12 @@ with tab_game:
                                 set_players(data["players"])
                     except:
                         await asyncio.sleep(1)
-
             asyncio.run(run())
 
         threading.Thread(target=ws_loop, daemon=True).start()
         st.session_state.ws_thread = True
 
-    # manual refresh
+    # Manual refresh
     if st.button("🔄 Refresh status"):
         snap = get_state(gid)
         if snap:
@@ -139,7 +128,7 @@ with tab_game:
         else:
             st.error(st.session_state.err or "Failed to fetch state")
 
-    # players panel
+    # Panel pemain
     pl = st.session_state.players
     cA, cB = st.columns(2)
     for role, col in zip(("A", "B"), (cA, cB)):
@@ -154,7 +143,7 @@ with tab_game:
     me_ready = pl.get(me_role, {}).get("ready", False)
     both_ready = pl.get("A", {}).get("ready") and pl.get("B", {}).get("ready")
 
-    # Ready button
+    # Tombol Ready
     if not me_ready:
         if st.button("I'm Ready", key=f"ready_{st.session_state.player_id}"):
             snap = post(f"/ready/{gid}", player_id=st.session_state.player_id)
@@ -163,24 +152,23 @@ with tab_game:
             else:
                 st.error(st.session_state.err)
 
-      # polling fallback
+    # Polling fallback
     if time.time() - st.session_state.poll_ts > POLL:
         st.session_state.poll_ts = time.time()
         snap = get_state(gid)
         if snap:
             set_players(snap["players"])
 
-    # Start Game (gunakan versi yang benar dari atas ↓↓↓)
+    # ─── PATCH START GAME ───────────────────────
     if both_ready and not st.session_state.game_started:
         if st.button("▶️ Start Game"):
             st.session_state.game_started = True
+            # trigger rerun agar kamera di-init ulang
+            st.session_state.need_rerun = True
 
-
-
-    # Camera / gesture
+    # Kamera & gesture
     if st.session_state.game_started:
         if st.session_state.cam_ctx is None:
-
             class VP(VideoProcessorBase):
                 def __init__(self):
                     self.hands = mp.solutions.hands.Hands(max_num_hands=1)
@@ -214,9 +202,7 @@ with tab_game:
     else:
         st.info("Both players Ready ➜ tekan **Start Game**.")
 
-# =========================================================
-#  Global safe rerun
-# =========================================================
+# ───────── Global safe rerun ───────────────────
 if st.session_state.need_rerun:
     st.session_state.need_rerun = False
     try:
