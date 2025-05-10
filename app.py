@@ -1,10 +1,18 @@
-import json, threading, asyncio, time, urllib.parse, requests, av, websockets, mediapipe as mp
+import json
+import threading
+import asyncio
+import time
+import urllib.parse
+import requests
+import av
+import websockets
+import mediapipe as mp
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 from gesture_utils import RPSMove, GestureStabilizer, _classify_from_landmarks
 
-API   = "https://web-production-7e17f.up.railway.app"
-POLL  = 3        # detik polling fallback
+API = "https://web-production-7e17f.up.railway.app"
+POLL = 3        # detik polling fallback
 WS_PING = 20
 
 st.set_page_config("RPS Gesture Game", "✊")
@@ -12,9 +20,17 @@ st.title("✊ Rock-Paper-Scissors Online")
 
 # ─────── Inisialisasi session_state ─────────
 defaults = dict(
-    game_id=None, player_id=None, role=None, player_name=None,
-    players={}, _hash="", ws_thread=False, err=None,
-    poll_ts=0, game_started=False, cam_ctx=None
+    game_id=None,
+    player_id=None,
+    role=None,
+    player_name=None,
+    players={},
+    _hash="",
+    ws_thread=False,
+    err=None,
+    poll_ts=0,
+    game_started=False,
+    cam_ctx=None
 )
 for k, v in defaults.items():
     st.session_state.setdefault(k, v)
@@ -38,7 +54,8 @@ def get_state(gid):
     except:
         pass
 
-def _h(pl): return json.dumps(pl, sort_keys=True)
+def _h(pl):
+    return json.dumps(pl, sort_keys=True)
 
 def set_players(pl):
     h = _h(pl)
@@ -66,10 +83,7 @@ with tab_lobby:
     with colJ:
         room = st.text_input("Room ID")
         if st.button("Join Room") and room:
-            res = post(
-                f"/join/{urllib.parse.quote(room.strip())}",
-                player_name=name,
-            )
+            res = post(f"/join/{urllib.parse.quote(room.strip())}", player_name=name)
             if res:
                 st.session_state.update(res, game_id=room)
                 snap = get_state(room)
@@ -96,18 +110,13 @@ with tab_game:
 
     # WebSocket listener (single thread)
     if not st.session_state.ws_thread:
-        WS_URI = (
-            API.replace("https", "wss", 1)
-            + f"/ws/{gid}/{st.session_state.player_id}"
-        )
+        WS_URI = API.replace("https", "wss", 1) + f"/ws/{gid}/{st.session_state.player_id}"
+
         def ws_loop():
             async def run():
                 while True:
                     try:
-                        async with websockets.connect(
-                            WS_URI, ping_interval=WS_PING
-                        ) as ws:
-                            # kirim ping minimal agar koneksi hidup
+                        async with websockets.connect(WS_URI, ping_interval=WS_PING) as ws:
                             while True:
                                 data = json.loads(await ws.recv())
                                 set_players(data["players"])
@@ -126,7 +135,7 @@ with tab_game:
         else:
             st.error(st.session_state.err or "Failed to fetch state")
 
-    # Panel pemain
+    # Players panel
     pl = st.session_state.players
     cA, cB = st.columns(2)
     for role, col in zip(("A", "B"), (cA, cB)):
@@ -141,7 +150,7 @@ with tab_game:
     me_ready = pl.get(me_role, {}).get("ready", False)
     both_ready = pl.get("A", {}).get("ready") and pl.get("B", {}).get("ready")
 
-    # Tombol Ready
+    # Ready button
     if not me_ready:
         if st.button("I'm Ready", key=f"ready_{st.session_state.player_id}"):
             snap = post(f"/ready/{gid}", player_id=st.session_state.player_id)
@@ -157,13 +166,13 @@ with tab_game:
         if snap:
             set_players(snap["players"])
 
-    # Start Game — hanya rerun saat tombol ditekan
+    # Start Game: hanya di sini kita rerun
     if both_ready and not st.session_state.game_started:
         if st.button("▶️ Start Game"):
             st.session_state.game_started = True
             st.experimental_rerun()
 
-    # Kamera & gesture
+    # Camera & gesture
     if st.session_state.game_started:
         if st.session_state.cam_ctx is None:
             class VP(VideoProcessorBase):
@@ -197,3 +206,4 @@ with tab_game:
         )
         st.write(f"Current gesture → **{mv.value.upper()}**")
     else:
+        st.info("Both players Ready ➜ tekan **Start Game**.")
