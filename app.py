@@ -40,11 +40,15 @@ def get_state(gid):
 def _h(pl): return json.dumps(pl, sort_keys=True)
 
 def set_players(pl):
+    """Perbarui snapshot pemain.
+       Setelah game dimulai, biarkan tanpa rerun agar kamera stabil."""
     h = _h(pl)
     if h != st.session_state._hash:
         st.session_state.players = pl
         st.session_state._hash = h
-        st.session_state.need_rerun = True
+        if not st.session_state.game_started:
+            st.session_state.need_rerun = True
+
 
 # =========================================================
 #  LOBBY
@@ -167,10 +171,11 @@ with tab_game:
             set_players(snap["players"])
 
     # Start Game
-    if both_ready and not st.session_state.game_started:
-        if st.button("▶️ Start Game"):
-            st.session_state.game_started = True
-            st.session_state.need_rerun = True
+  if both_ready and not st.session_state.game_started:
+    if st.button("▶️ Start Game"):
+        st.session_state.game_started = True
+        # tidak men‐set need_rerun; kamera dibuat di siklus yang sama
+
 
     # Camera / gesture
     if st.session_state.game_started:
