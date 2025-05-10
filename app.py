@@ -165,13 +165,13 @@ with tab_game:
         if snap:
             set_players(snap["players"])
 
-    # Start Game: set flag, jangan langsung rerun di sini
+    # Start Game: set flag, tunggu di-trigger di bawah
     if both_ready and not st.session_state.game_started:
         if st.button("▶️ Start Game"):
             st.session_state.game_started = True
             st.session_state.start_clicked = True
 
-    # Camera & gesture
+    # Kamera & gesture (hanya setelah start)
     if st.session_state.game_started:
         if st.session_state.cam_ctx is None:
             class VP(VideoProcessorBase):
@@ -191,9 +191,11 @@ with tab_game:
                     self.last_move = self.stab.update(mv)
                     return av.VideoFrame.from_ndarray(img, format="bgr24")
 
+            # *** Perubahan kunci: gunakan SENDRECV agar video lokal tampil ***
             st.session_state.cam_ctx = webrtc_streamer(
                 key="cam",
-                mode=WebRtcMode.SENDONLY,
+                mode=WebRtcMode.SENDRECV,
+                media_stream_constraints={"video": True, "audio": False},
                 video_processor_factory=VP,
             )
 
@@ -210,4 +212,5 @@ with tab_game:
 # ───────────── Trigger single rerun ────────────────────────
 if st.session_state.start_clicked:
     st.session_state.start_clicked = False
+    # setelah rerun, cam_ctx akan dibuat dan video + handtracking muncul
     st.experimental_rerun()
