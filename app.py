@@ -18,7 +18,7 @@ WS_PING = 20
 st.set_page_config("RPS Gesture Game", "✊")
 st.title("✊ Rock-Paper-Scissors Online")
 
-# ─────── Inisialisasi session_state ─────────
+# ─── Inisialisasi session_state ─────────────────────
 defaults = dict(
     game_id=None,
     player_id=None,
@@ -35,7 +35,7 @@ defaults = dict(
 for k, v in defaults.items():
     st.session_state.setdefault(k, v)
 
-# ─────────── Helpers ─────────────────────────
+# ─── Helper HTTP/WS ──────────────────────────────────
 def post(path, **data):
     try:
         r = requests.post(f"{API}{path}", json=data, timeout=15)
@@ -58,12 +58,15 @@ def _h(pl):
     return json.dumps(pl, sort_keys=True)
 
 def set_players(pl):
+    # Hanya update state pemain saat LOBBY (belum start game)
+    if st.session_state.game_started:
+        return
     h = _h(pl)
     if h != st.session_state._hash:
         st.session_state.players = pl
         st.session_state._hash = h
 
-# ───────────── LOBBY ─────────────────────────
+# ─── LOBBY ──────────────────────────────────────────
 tab_lobby, tab_game = st.tabs(["🏠 Lobby", "🎮 Game"])
 with tab_lobby:
     name = st.text_input("Your name", max_chars=20).strip()
@@ -101,82 +104,74 @@ with tab_lobby:
             f"Room `{st.session_state.game_id}`"
         )
 
-# ───────────── GAME ──────────────────────────
+# ─── GAME ───────────────────────────────────────────
 with tab_game:
     gid = st.session_state.game_id
     if not gid:
         st.info("Create or join a room first.")
         st.stop()
 
-    # WebSocket listener
-    if not st.session_state.ws_thread:
-        WS_URI = API.replace("https", "wss", 1) + f"/ws/{gid}/{st.session_state.player_id}"
-        def ws_loop():
-            async def run():
-                while True:
-                    try:
-                        async with websockets.connect(WS_URI, ping_interval=WS_PING) as ws:
-                            while True:
-                                data = json.loads(await ws.recv())
-                                set_players(data["players"])
-                    except:
-                        await asyncio.sleep(1)
-            asyncio.run(run())
-        threading.Thread(target=ws_loop, daemon=True).start()
-        st.session_state.ws_thread = True
+    # Fase 1: lobby sampai kedua pemain ready
+    if not st.session_state.game_started:
+        # ─ WebSocket listener untuk update "Ready" tanpa polling manual
+        if not st.session_state.ws_thread:
+            WS_URI = API.replace("https", "wss", 1) + f"/ws/{gid}/{st.session_state.player_id}"
+            def ws_loop():
+                async def run():
+                    while True:
+                        try:
+                            async with websockets.connect(WS_URI, ping_interval=WS_PING) as ws:
+                                while True:
+                                    data = json.loads(await ws.recv())
+                                    set_players(data["players"])
+                        except:
+                            await asyncio.sleep(1)
+                asyncio.run(run())
+            threading.Thread(target=ws_loop, daemon=True).start()
+            st.session_state.ws_thread = True
 
-    # Manual refresh
-    if st.button("🔄 Refresh status"):
-        snap = get_state(gid)
-        if snap:
-            set_players(snap["players"])
-        else:
-            st.error(st.session_state.err or "Failed to fetch state")
-
-    # Players panel
-    pl = st.session_state.players
-    cA, cB = st.columns(2)
-    for role, col in zip(("A", "B"), (cA, cB)):
-        p = pl.get(role)
-        if p and p.get("name"):
-            col.markdown(f"**{role} – {p['name']}**")
-            col.write("✅ Ready" if p.get("ready") else "⏳ Not ready")
-        else:
-            col.write(f"*waiting Player {role}*")
-
-    me_role = st.session_state.role
-    me_ready = pl.get(me_role, {}).get("ready", False)
-    both_ready = pl.get("A", {}).get("ready") and pl.get("B", {}).get("ready")
-
-    # Ready button
-    if not me_ready:
-        if st.button("I'm Ready", key=f"ready_{st.session_state.player_id}"):
-            snap = post(f"/ready/{gid}", player_id=st.session_state.player_id)
+        if st.button("🔄 Refresh status"):
+            snap = get_state(gid)
             if snap:
                 set_players(snap["players"])
             else:
-                st.error(st.session_state.err)
+                st.error(st.session_state.err or "Failed to fetch state")
 
-    # Polling fallback (tanpa rerun)
-    if time.time() - st.session_state.poll_ts > POLL:
-        st.session_state.poll_ts = time.time()
-        snap = get_state(gid)
-        if snap:
-            set_players(snap["players"])
+        # Tampilkan panel pemain
+        pl = st.session_state.players
+        cA, cB = st.columns(2)
+        for role, col in zip(("A", "B"), (cA, cB)):
+            p = pl.get(role)
+            if p and p.get("name"):
+                col.markdown(f"**{role} – {p['name']}**")
+                col.write("✅ Ready" if p.get("ready") else "⏳ Not ready")
+            else:
+                col.write(f"*waiting Player {role}*")
 
-    # Start Game: gunakan on_click, tanpa manual rerun
-    def start_cb():
-        st.session_state.game_started = True
+        me_role = st.session_state.role
+        me_ready = pl.get(me_role, {}).get("ready", False)
+        both_ready = pl.get("A", {}).get("ready") and pl.get("B", {}).get("ready")
 
-    start_disabled = not both_ready or st.session_state.game_started
-    st.button(
-        "▶️ Start Game",
-        on_click=start_cb,
-        disabled=start_disabled
-    )
+        if not me_ready:
+            if st.button("I'm Ready", key=f"ready_{st.session_state.player_id}"):
+                snap = post(f"/ready/{gid}", player_id=st.session_state.player_id)
+                if snap:
+                    set_players(snap["players"])
+                else:
+                    st.error(st.session_state.err)
 
-    # Kamera & gesture, hanya setelah game_started=True
-    if st.session_state.game_started:
+        # Tombol Start Game
+        def start_cb():
+            st.session_state.game_started = True
+
+        st.button(
+            "▶️ Start Game",
+            on_click=start_cb,
+            disabled=not both_ready
+        )
+
+    # Fase 2: setelah Start Game → langsung inisialisasi kamera sekali
+    else:
         if st.session_state.cam_ctx is None:
             class VP(VideoProcessorBase):
                 def __init__(self):
@@ -202,10 +197,5 @@ with tab_game:
             )
 
         ctx = st.session_state.cam_ctx
-        mv = (
-            ctx.video_processor.last_move
-            if ctx and ctx.video_processor else RPSMove.NONE
-        )
+        mv = ctx.video_processor.last_move if ctx and ctx.video_processor else RPSMove.NONE
         st.write(f"Current gesture → **{mv.value.upper()}**")
-    else:
-        st.info("Both players Ready ➜ tekan **Start Game**.")
