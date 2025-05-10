@@ -31,7 +31,6 @@ defaults = dict(
     poll_ts=0,
     game_started=False,
     cam_ctx=None,
-    start_clicked=False,
 )
 for k, v in defaults.items():
     st.session_state.setdefault(k, v)
@@ -109,7 +108,7 @@ with tab_game:
         st.info("Create or join a room first.")
         st.stop()
 
-    # WebSocket listener (single thread)
+    # WebSocket listener
     if not st.session_state.ws_thread:
         WS_URI = API.replace("https", "wss", 1) + f"/ws/{gid}/{st.session_state.player_id}"
         def ws_loop():
@@ -158,20 +157,25 @@ with tab_game:
             else:
                 st.error(st.session_state.err)
 
-    # Polling fallback
+    # Polling fallback (tanpa rerun)
     if time.time() - st.session_state.poll_ts > POLL:
         st.session_state.poll_ts = time.time()
         snap = get_state(gid)
         if snap:
             set_players(snap["players"])
 
-    # Start Game: set flag, tunggu di-trigger di bawah
-    if both_ready and not st.session_state.game_started:
-        if st.button("▶️ Start Game"):
-            st.session_state.game_started = True
-            st.session_state.start_clicked = True
+    # Start Game: gunakan on_click, tanpa manual rerun
+    def start_cb():
+        st.session_state.game_started = True
 
-    # Kamera & gesture (hanya setelah start)
+    start_disabled = not both_ready or st.session_state.game_started
+    st.button(
+        "▶️ Start Game",
+        on_click=start_cb,
+        disabled=start_disabled
+    )
+
+    # Kamera & gesture, hanya setelah game_started=True
     if st.session_state.game_started:
         if st.session_state.cam_ctx is None:
             class VP(VideoProcessorBase):
@@ -185,13 +189,11 @@ with tab_game:
                     res = self.hands.process(img[:, :, ::-1])
                     mv = (
                         _classify_from_landmarks(res.multi_hand_landmarks[0])
-                        if res and res.multi_hand_landmarks
-                        else RPSMove.NONE
+                        if res and res.multi_hand_landmarks else RPSMove.NONE
                     )
                     self.last_move = self.stab.update(mv)
                     return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-            # *** Perubahan kunci: gunakan SENDRECV agar video lokal tampil ***
             st.session_state.cam_ctx = webrtc_streamer(
                 key="cam",
                 mode=WebRtcMode.SENDRECV,
@@ -202,15 +204,8 @@ with tab_game:
         ctx = st.session_state.cam_ctx
         mv = (
             ctx.video_processor.last_move
-            if ctx and ctx.video_processor
-            else RPSMove.NONE
+            if ctx and ctx.video_processor else RPSMove.NONE
         )
         st.write(f"Current gesture → **{mv.value.upper()}**")
     else:
         st.info("Both players Ready ➜ tekan **Start Game**.")
-
-# ───────────── Trigger single rerun ────────────────────────
-if st.session_state.start_clicked:
-    st.session_state.start_clicked = False
-    # setelah rerun, cam_ctx akan dibuat dan video + handtracking muncul
-    st.experimental_rerun()
