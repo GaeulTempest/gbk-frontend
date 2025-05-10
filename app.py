@@ -64,8 +64,10 @@ with tab_lobby:
             if res:
                 st.session_state.update(res, game_id=room)
                 snap = get_state(room)
-                if snap: set_players(snap["players"])
-            else: st.error(st.session_state.err)
+             if snap:
+    set_players(snap["players"])
+else:
+    st.error(st.session_state.err or "Failed to fetch state")
 
     if st.session_state.game_id:
         st.success(f"Connected as **{st.session_state.player_name} "
