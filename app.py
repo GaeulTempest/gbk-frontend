@@ -4,24 +4,20 @@ from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 from gesture_utils import RPSMove, GestureStabilizer, _classify_from_landmarks
 
 API   = "https://web-production-7e17f.up.railway.app"
-POLL  = 3        # detik polling fallback
+POLL  = 3
 WS_PING = 20
 
-# ─────────────────────────────── UI heading
 st.set_page_config("RPS Gesture Game", "✊")
 st.title("✊ Rock-Paper-Scissors Online")
 
-# ─────────────────────────────── session defaults
 defaults = dict(
     game_id=None, player_id=None, role=None, player_name=None,
-    players={}, _hash="",    # hash untuk deteksi perubahan state
-    ws_thread=False, err=None,
-    poll_ts=0, game_started=False, cam_ctx=None,
-    need_rerun=False
+    players={}, _hash="", ws_thread=False, err=None,
+    poll_ts=0, game_started=False, cam_ctx=None, need_rerun=False
 )
 for k,v in defaults.items(): st.session_state.setdefault(k,v)
 
-# ─────────────────────────────── helper fns
+# ── helpers ───────────────────────────────────────────────
 def post(path, **data):
     try:
         r = requests.post(f"{API}{path}", json=data, timeout=15); r.raise_for_status()
@@ -37,7 +33,6 @@ def get_state(gid):
 
 def _h(pl): return json.dumps(pl, sort_keys=True)
 def set_players(pl):
-    # hanya set state + flag, rerun di akhir skrip utama
     h = _h(pl)
     if h != st.session_state._hash:
         st.session_state.players = pl
@@ -45,29 +40,22 @@ def set_players(pl):
         st.session_state.need_rerun = True
 
 # =========================================================
-# LOBBY
+#  LOBBY
 # =========================================================
 tab_lobby, tab_game = st.tabs(["🏠 Lobby","🎮 Game"])
 with tab_lobby:
     name = st.text_input("Your name", max_chars=20).strip()
-    if name:
-        st.session_state.player_name = name
-    if not st.session_state.player_name:
-        st.stop()
+    if name: st.session_state.player_name = name
+    if not st.session_state.player_name: st.stop()
 
-    colC, colJ = st.columns(2)
+    colC,colJ = st.columns(2)
 
-    # ─ Create
     with colC:
         if st.button("Create Room"):
             res = post("/create_game", player_name=name)
-            if res:
-                st.session_state.update(res)
-                st.session_state.need_rerun = True
-            else:
-                st.error(st.session_state.err)
+            if res: st.session_state.update(res, need_rerun=True)
+            else:   st.error(st.session_state.err)
 
-    # ─ Join
     with colJ:
         room = st.text_input("Room ID")
         if st.button("Join Room") and room:
@@ -77,8 +65,7 @@ with tab_lobby:
                 st.session_state.update(res, game_id=room)
                 snap = get_state(room)
                 if snap: set_players(snap["players"])
-            else:
-                st.error(st.session_state.err)
+            else: st.error(st.session_state.err)
 
     if st.session_state.game_id:
         st.success(f"Connected as **{st.session_state.player_name} "
@@ -86,7 +73,7 @@ with tab_lobby:
                    f"Room `{st.session_state.game_id}`")
 
 # =========================================================
-# GAME
+#  GAME
 # =========================================================
 with tab_game:
     gid = st.session_state.game_id
@@ -94,14 +81,14 @@ with tab_game:
         st.info("Create or join a room first.")
         st.stop()
 
-    # ── WebSocket listener (single thread) ──
+    # WebSocket listener (single thread)
     if not st.session_state.ws_thread:
         WS_URI = API.replace("https","wss",1)+f"/ws/{gid}/{st.session_state.player_id}"
         def ws_loop():
             async def run():
                 while True:
                     try:
-                        async with websockets.connect(WS_URI, ping_interval=WS_PING) as ws:
+                        async with websockets.connect(WS_URI,ping_interval=WS_PING) as ws:
                             while True:
                                 data = json.loads(await ws.recv())
                                 set_players(data["players"])
@@ -110,47 +97,42 @@ with tab_game:
         threading.Thread(target=ws_loop, daemon=True).start()
         st.session_state.ws_thread = True
 
-    # ── Manual Refresh ──
+    # manual refresh
     if st.button("🔄 Refresh status"):
         snap = get_state(gid)
         if snap: set_players(snap["players"])
         else: st.error("Failed to fetch state")
 
-    # ── Panel pemain ──
+    # players panel
     pl = st.session_state.players
-    colA,colB = st.columns(2)
-    for role,col in zip(("A","B"),(colA,colB)):
+    cA,cB = st.columns(2)
+    for role,col in zip(("A","B"),(cA,cB)):
         p = pl.get(role)
         if p and p.get("name"):
             col.markdown(f"**{role} – {p['name']}**")
             col.write("✅ Ready" if p.get("ready") else "⏳ Not ready")
-        else:
-            col.write(f"*waiting Player {role}*")
+        else: col.write(f"*waiting Player {role}*")
 
     me_role   = st.session_state.role
     me_ready  = pl.get(me_role, {}).get("ready", False)
     both_ready= pl.get("A",{}).get("ready") and pl.get("B",{}).get("ready")
 
-    # ── Tombol Ready ──
     if not me_ready:
         if st.button("I'm Ready", key=f"ready_{st.session_state.player_id}"):
             snap = post(f"/ready/{gid}", player_id=st.session_state.player_id)
             if snap: set_players(snap["players"])
             else: st.error(st.session_state.err)
 
-    # ── Polling fallback setiap POLL detik ──
     if time.time()-st.session_state.poll_ts > POLL:
         st.session_state.poll_ts = time.time()
         snap = get_state(gid)
         if snap: set_players(snap["players"])
 
-    # ── Tombol Start Game ──
     if both_ready and not st.session_state.game_started:
         if st.button("▶️ Start Game"):
             st.session_state.game_started = True
             st.session_state.need_rerun = True
 
-    # ── Kamera / gesture ──
     if st.session_state.game_started:
         if st.session_state.cam_ctx is None:
             class VP(VideoProcessorBase):
@@ -160,10 +142,11 @@ with tab_game:
                 def recv(self, frame):
                     img = frame.to_ndarray(format="bgr24")
                     res = self.hands.process(img[:,:,::-1])
-                    mv  = (_classify_from_landmarks(res.multi_hand_landmarks[0])
-                           if res and res.multi_hand_landmarks else RPSMove.NONE)
+                    mv  = _classify_from_landmarks(res.multi_hand_landmarks[0]) \
+                          if res and res.multi_hand_landmarks else RPSMove.NONE
                     self.last_move = self.stab.update(mv)
                     return av.VideoFrame.from_ndarray(img, format="bgr24")
+
             st.session_state.cam_ctx = webrtc_streamer(
                 key="cam",
                 mode=WebRtcMode.SENDONLY,
@@ -177,12 +160,12 @@ with tab_game:
         st.info("Both players Ready ➜ tekan **Start Game**.")
 
 # =========================================================
-#  GLOBAL RERUN (aman)
+#  Global safe rerun
 # =========================================================
 if st.session_state.need_rerun:
     st.session_state.need_rerun = False
     try:
         st.experimental_rerun()
-    except RuntimeError:
-        # konteks sudah selesai; abaikan (akan rerun berikutnya)
+    except (RuntimeError, AttributeError):
+        # konteks eksekusi telah berakhir; rerun berikutnya akan diperbarui
         pass
