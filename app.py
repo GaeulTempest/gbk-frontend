@@ -59,18 +59,20 @@ with tab_lobby:
     name = st.text_input("Your name", max_chars=20).strip()
     if name:
         st.session_state.player_name = name
-    if not st.session_state.player_name:
-        st.stop()  # belum input nama, stop di sini
 
-    colC, colJ = st.columns(2)
+    if not st.session_state.player_name:
+        st.warning("Enter your name to continue.")
+        st.stop()
+
+    cA, cB = st.columns(2)
 
     # Create Room
-    with colC:
+    with cA:
         if st.button("Create Room"):
             res = post("/create_game", player_name=name)
             if res:
                 st.session_state.update(res)
-                # reset sebelum game
+                # reset game phase
                 st.session_state.game_started  = False
                 st.session_state.cam_ctx        = None
                 st.session_state.detected_move  = None
@@ -80,13 +82,13 @@ with tab_lobby:
                 st.error(st.session_state.err or "Create failed")
 
     # Join Room
-    with colJ:
+    with cB:
         room = st.text_input("Room ID").strip()
         if st.button("Join Room") and room:
             res = post(f"/join/{urllib.parse.quote(room)}", player_name=name)
             if res:
                 st.session_state.update(res, game_id=room)
-                # reset sebelum game
+                # reset game phase
                 st.session_state.game_started  = False
                 st.session_state.cam_ctx        = None
                 st.session_state.detected_move  = None
@@ -100,28 +102,30 @@ with tab_lobby:
             else:
                 st.error(st.session_state.err or "Join failed")
 
-    if st.session_state.game_id:
-        st.success(
-            f"Connected as **{st.session_state.player_name} "
-            f"(Player {st.session_state.role})** | Room `{st.session_state.game_id}`"
-        )
-    # stop script — **jangan** ke game tab sebelum user berpindah tab
-    st.stop()
+    # Pastikan game_id ada untuk lanjut ke tab Game
+    if not st.session_state.game_id:
+        st.info("Create or join a room to continue.")
+        st.stop()
+
+    st.success(
+        f"Connected as **{st.session_state.player_name} "
+        f"(Player {st.session_state.role})** | Room `{st.session_state.game_id}`"
+    )
 
 # =========================================================
 #  GAME TAB
 # =========================================================
 with tab_game:
-    # Hanya tampilkan tab Game kalau user sudah Choose Lobby
-    if not st.session_state.game_id:
-        st.info("Create or join a room in the Lobby tab first.")
+    gid = st.session_state.game_id
+    if not gid:
+        st.info("Go to Lobby to create or join a room.")
         st.stop()
 
-    # ── LOBBY PHASE (sebelum tombol Start) ───────────────
+    # LOBBY PHASE (sebelum start)
     if not st.session_state.game_started:
-        # WebSocket listener untuk auto-sinkron Ready
+        # WS listener
         if not st.session_state.ws_thread:
-            WS_URI = API.replace("https","wss",1)+f"/ws/{st.session_state.game_id}/{st.session_state.player_id}"
+            WS_URI = API.replace("https","wss",1)+f"/ws/{gid}/{st.session_state.player_id}"
             def ws_loop():
                 async def run():
                     while True:
@@ -136,18 +140,16 @@ with tab_game:
             threading.Thread(target=ws_loop, daemon=True).start()
             st.session_state.ws_thread = True
 
-        # Manual refresh status
         if st.button("🔄 Refresh status"):
-            snap = get_state(st.session_state.game_id)
+            snap = get_state(gid)
             if snap:
                 set_players(snap["players"])
             else:
                 st.error(st.session_state.err or "Fetch state failed")
 
-        # Tampilkan players & ready status
         pl = st.session_state.players
-        cA, cB = st.columns(2)
-        for role, col in zip(("A","B"), (cA,cB)):
+        c1, c2 = st.columns(2)
+        for role, col in zip(("A","B"), (c1,c2)):
             p = pl.get(role,{})
             if p.get("name"):
                 col.markdown(f"**{role} – {p['name']}**")
@@ -160,24 +162,27 @@ with tab_game:
 
         if not me_ready:
             if st.button("I'm Ready", key=f"ready_{st.session_state.player_id}"):
-                snap = post(f"/ready/{st.session_state.game_id}", player_id=st.session_state.player_id)
+                snap = post(f"/ready/{gid}", player_id=st.session_state.player_id)
                 if snap:
                     set_players(snap["players"])
                 else:
                     st.error(st.session_state.err or "Ready failed")
 
-        st.button("▶️ Start Game", key="start", disabled=not both_ready, on_click=lambda: st.session_state.update(game_started=True))
-        st.info("Press Ready on both sides, then click **Start Game**")
-        st.stop()  # **CRUCIAL**: jangan lanjut ke kode kamera!
+        # tombol Start Game
+        if st.button("▶️ Start Game", disabled=not both_ready):
+            st.session_state.game_started = True
 
-    # ── GAME PHASE: kamera & gesture ──────────────────────
-    # (kamu pasti sudah set game_started=True)
+        st.info("Press Ready on both sides, then click **Start Game**")
+        st.stop()  # PENTING: hentikan di sini sampai user benar-benar start
+
+    # GAME PHASE (setelah start)
     if st.session_state.cam_ctx is None:
         class VP(VideoProcessorBase):
             def __init__(self):
                 self.hands = mp.solutions.hands.Hands(max_num_hands=1)
                 self.stab  = GestureStabilizer()
                 self.last  = RPSMove.NONE
+
             def recv(self, frame):
                 img = frame.to_ndarray(format="bgr24")
                 res = self.hands.process(img[:,:,::-1])
@@ -193,12 +198,10 @@ with tab_game:
             async_processing=True
         )
 
-    # Live feedback
     ctx     = st.session_state.cam_ctx
     gesture = ctx.video_processor.last if ctx and ctx.video_processor else RPSMove.NONE
     st.write(f"Live gesture → **{gesture.value.upper()}**")
 
-    # Auto-submit setelah delay
     now = time.time()
     if gesture == RPSMove.NONE:
         st.session_state.detected_move = None
@@ -211,10 +214,8 @@ with tab_game:
             st.session_state.move_sent     = False
         elif (not st.session_state.move_sent
               and now - st.session_state.move_ts >= AUTO_SUBMIT_DELAY):
-            snap = post(
-                f"/move/{st.session_state.game_id}",
-                player_id=st.session_state.player_id,
-                move=gesture.value
-            )
+            post(f"/move/{gid}",
+                 player_id=st.session_state.player_id,
+                 move=gesture.value)
             st.session_state.move_sent = True
             st.success(f"Sent **{gesture.value.upper()}**!")
