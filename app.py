@@ -3,7 +3,7 @@ import streamlit as st
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 from gesture_utils import RPSMove, GestureStabilizer, _classify_from_landmarks
 
-API     = "https://web-production-7e17f.up.railway.app"
+API = "https://web-production-7e17f.up.railway.app"
 WS_PING = 20
 AUTO_SUBMIT_DELAY = 5  # detik gesture stabil sebelum auto-submit
 
@@ -17,7 +17,7 @@ defaults = dict(
     move_ts=0, detected_move=None, move_sent=False,
     cam_ctx=None, game_started=False
 )
-for k,v in defaults.items():
+for k, v in defaults.items():
     st.session_state.setdefault(k, v)
 
 # ── Helper HTTP ────────────────────────────────────────
@@ -28,7 +28,7 @@ def post(path, **data):
         return r.json()
     except requests.RequestException as e:
         st.session_state.err = (
-            e.response.text if getattr(e,"response",None) else str(e)
+            e.response.text if getattr(e, "response", None) else str(e)
         )
 
 def get_state(gid):
@@ -39,22 +39,21 @@ def get_state(gid):
     except:
         pass
 
-def _h(pl): 
+def _h(pl):
     return json.dumps(pl, sort_keys=True)
 
 def set_players(pl):
-    """Update hanya di fase LOBBY."""
     if st.session_state.game_started:
         return
     h = _h(pl)
     if h != st.session_state._hash:
         st.session_state.players = pl
-        st.session_state._hash    = h
+        st.session_state._hash = h
 
 # =========================================================
 #  LOBBY TAB
 # =========================================================
-tab_lobby, tab_game = st.tabs(["🏠 Lobby","🎮 Game"])
+tab_lobby, tab_game = st.tabs(["🏠 Lobby", "🎮 Game"])
 with tab_lobby:
     name = st.text_input("Your name", max_chars=20).strip()
     if name:
@@ -72,12 +71,11 @@ with tab_lobby:
             res = post("/create_game", player_name=name)
             if res:
                 st.session_state.update(res)
-                # reset game phase
-                st.session_state.game_started  = False
-                st.session_state.cam_ctx        = None
-                st.session_state.detected_move  = None
-                st.session_state.move_ts        = 0
-                st.session_state.move_sent      = False
+                st.session_state.game_started = False
+                st.session_state.cam_ctx = None
+                st.session_state.detected_move = None
+                st.session_state.move_ts = 0
+                st.session_state.move_sent = False
             else:
                 st.error(st.session_state.err or "Create failed")
 
@@ -88,12 +86,11 @@ with tab_lobby:
             res = post(f"/join/{urllib.parse.quote(room)}", player_name=name)
             if res:
                 st.session_state.update(res, game_id=room)
-                # reset game phase
-                st.session_state.game_started  = False
-                st.session_state.cam_ctx        = None
-                st.session_state.detected_move  = None
-                st.session_state.move_ts        = 0
-                st.session_state.move_sent      = False
+                st.session_state.game_started = False
+                st.session_state.cam_ctx = None
+                st.session_state.detected_move = None
+                st.session_state.move_ts = 0
+                st.session_state.move_sent = False
                 snap = get_state(room)
                 if snap:
                     set_players(snap["players"])
@@ -102,7 +99,6 @@ with tab_lobby:
             else:
                 st.error(st.session_state.err or "Join failed")
 
-    # Pastikan game_id ada untuk lanjut ke tab Game
     if not st.session_state.game_id:
         st.info("Create or join a room to continue.")
         st.stop()
@@ -121,11 +117,9 @@ with tab_game:
         st.info("Go to Lobby to create or join a room.")
         st.stop()
 
-    # LOBBY PHASE (sebelum start)
     if not st.session_state.game_started:
-        # WS listener
         if not st.session_state.ws_thread:
-            WS_URI = API.replace("https","wss",1)+f"/ws/{gid}/{st.session_state.player_id}"
+            WS_URI = API.replace("https", "wss", 1) + f"/ws/{gid}/{st.session_state.player_id}"
             def ws_loop():
                 async def run():
                     while True:
@@ -149,16 +143,16 @@ with tab_game:
 
         pl = st.session_state.players
         c1, c2 = st.columns(2)
-        for role, col in zip(("A","B"), (c1,c2)):
-            p = pl.get(role,{})
+        for role, col in zip(("A", "B"), (c1, c2)):
+            p = pl.get(role, {})
             if p.get("name"):
                 col.markdown(f"**{role} – {p['name']}**")
                 col.write("✅ Ready" if p.get("ready") else "⏳ Not ready")
             else:
                 col.write(f"*waiting Player {role}*")
 
-        me_ready   = pl.get(st.session_state.role,{}).get("ready",False)
-        both_ready = pl.get("A",{}).get("ready") and pl.get("B",{}).get("ready")
+        me_ready = pl.get(st.session_state.role, {}).get("ready", False)
+        both_ready = pl.get("A", {}).get("ready") and pl.get("B", {}).get("ready")
 
         if not me_ready:
             if st.button("I'm Ready", key=f"ready_{st.session_state.player_id}"):
@@ -168,26 +162,24 @@ with tab_game:
                 else:
                     st.error(st.session_state.err or "Ready failed")
 
-        # tombol Start Game
         if st.button("▶️ Start Game", disabled=not both_ready):
             st.session_state.game_started = True
 
         st.info("Press Ready on both sides, then click **Start Game**")
-        st.stop()  # PENTING: hentikan di sini sampai user benar-benar start
+        st.stop()
 
-    # GAME PHASE (setelah start)
     if st.session_state.cam_ctx is None:
         class VP(VideoProcessorBase):
             def __init__(self):
                 self.hands = mp.solutions.hands.Hands(max_num_hands=1)
-                self.stab  = GestureStabilizer()
-                self.last  = RPSMove.NONE
+                self.stab = GestureStabilizer()
+                self.last = RPSMove.NONE
 
             def recv(self, frame):
                 img = frame.to_ndarray(format="bgr24")
-                res = self.hands.process(img[:,:,::-1])
-                mv  = (_classify_from_landmarks(res.multi_hand_landmarks[0])
-                       if res and res.multi_hand_landmarks else RPSMove.NONE)
+                res = self.hands.process(img[:, :, ::-1])
+                mv = (_classify_from_landmarks(res.multi_hand_landmarks[0])
+                      if res and res.multi_hand_landmarks else RPSMove.NONE)
                 self.last = self.stab.update(mv)
                 return av.VideoFrame.from_ndarray(img, format="bgr24")
 
@@ -198,22 +190,22 @@ with tab_game:
             async_processing=True
         )
 
-    ctx     = st.session_state.cam_ctx
+    ctx = st.session_state.cam_ctx
     gesture = ctx.video_processor.last if ctx and ctx.video_processor else RPSMove.NONE
     st.write(f"Live gesture → **{gesture.value.upper()}**")
 
     now = time.time()
     if gesture == RPSMove.NONE:
         st.session_state.detected_move = None
-        st.session_state.move_ts       = now
-        st.session_state.move_sent     = False
+        st.session_state.move_ts = now
+        st.session_state.move_sent = False
     else:
         if st.session_state.detected_move != gesture:
             st.session_state.detected_move = gesture
-            st.session_state.move_ts       = now
-            st.session_state.move_sent     = False
-        elif (not st.session_state.move_sent
-              and now - st.session_state.move_ts >= AUTO_SUBMIT_DELAY):
+            st.session_state.move_ts = now
+            st.session_state.move_sent = False
+        elif (not st.session_state.move_sent and
+              now - st.session_state.move_ts >= AUTO_SUBMIT_DELAY):
             post(f"/move/{gid}",
                  player_id=st.session_state.player_id,
                  move=gesture.value)
