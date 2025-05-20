@@ -34,10 +34,11 @@ def post(path, **data):
 def get_state(gid):
     try:
         r = requests.get(f"{API}/state/{gid}", timeout=10)
-        if r.status_code == 200:
-            return r.json()
-    except:
-        pass
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        st.session_state.err = f"Failed to get state: {str(e)}"
+        return None
 
 def _h(pl): 
     return json.dumps(pl, sort_keys=True)
@@ -81,22 +82,23 @@ with tab_lobby:
                 st.error(st.session_state.err or "Create failed")
 
     # Join Room
-    with cB:
-        room = st.text_input("Room ID").strip()
-        if st.button("Join Room") and room:
-            res = post(f"/join/{urllib.parse.quote(room)}", player_name=name)
-            if res:
-                st.session_state.update(res, game_id=room)
-                st.session_state.game_started = False
-                st.session_state.cam_ctx = None
-                st.session_state.detected_move = None
-                st.session_state.move_ts = 0
-                st.session_state.move_sent = False
-                snap = get_state(room)
-                if snap:
-                    set_players(snap["players"])
-                else:
-                    st.error(st.session_state.err or "Fetch state failed")
+  with cB:
+    room = st.text_input("Room ID").strip()
+    if st.button("Join Room") and room:
+        res = post(f"/join/{urllib.parse.quote(room)}", player_name=name)
+        if res:
+            st.session_state.update(res)
+            st.session_state.game_started = False
+            st.session_state.cam_ctx = None
+            st.session_state.detected_move = None
+            st.session_state.move_ts = 0
+            st.session_state.move_sent = False
+            snap = get_state(room)
+            if snap:
+                st.session_state.players = snap.get("players", {})
+                st.session_state._hash = _h(snap.get("players", {}))
+            else:
+                st.error(st.session_state.err or "Failed to get initial game state")
             else:
                 st.error(st.session_state.err or "Join failed")
 
