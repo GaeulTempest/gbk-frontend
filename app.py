@@ -81,24 +81,27 @@ with tab_lobby:
             else:
                 st.error(st.session_state.err or "Create failed")
 
-    # Join Room
-  with cB:
-    room = st.text_input("Room ID").strip()
-    if st.button("Join Room") and room:
-        res = post(f"/join/{urllib.parse.quote(room)}", player_name=name)
-        if res:
-            st.session_state.update(res)
-            st.session_state.game_started = False
-            st.session_state.cam_ctx = None
-            st.session_state.detected_move = None
-            st.session_state.move_ts = 0
-            st.session_state.move_sent = False
-            snap = get_state(room)
-            if snap:
-                st.session_state.players = snap.get("players", {})
-                st.session_state._hash = _h(snap.get("players", {}))
-            else:
-                st.error(st.session_state.err or "Failed to get initial game state")
+    # Join Room (Perbaikan Indentasi di Bagian Ini)
+    with cB:
+        room = st.text_input("Room ID").strip()
+        if st.button("Join Room") and room:
+            res = post(f"/join/{urllib.parse.quote(room)}", player_name=name)
+            if res:
+                st.session_state.update(
+                    game_id=room,
+                    player_id=res.get("player_id"),
+                    role=res.get("role")
+                )
+                st.session_state.game_started = False
+                st.session_state.cam_ctx = None
+                st.session_state.detected_move = None
+                st.session_state.move_ts = 0
+                st.session_state.move_sent = False
+                snap = get_state(room)
+                if snap:
+                    set_players(snap.get("players", {}))
+                else:
+                    st.error(st.session_state.err or "Failed to get initial game state")
             else:
                 st.error(st.session_state.err or "Join failed")
 
