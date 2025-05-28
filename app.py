@@ -15,10 +15,14 @@ defaults = dict(
     game_id=None, player_id=None, role=None, player_name=None,
     players={}, _hash="", ws_thread=False, err=None,
     move_ts=0, detected_move=None, move_sent=False,
-    cam_ctx=None, game_started=False
+    game_started=False, gesture_stabilizer=GestureStabilizer()
 )
 for k, v in defaults.items():
     st.session_state.setdefault(k, v)
+
+# Inisialisasi MediaPipe Hands sekali saja
+if 'hands' not in st.session_state:
+    st.session_state.hands = mp.solutions.hands.Hands(max_num_hands=1)
 
 # ── Helper HTTP ────────────────────────────────────────
 def post(path, **data):
@@ -44,7 +48,6 @@ def _h(pl):
     return json.dumps(pl, sort_keys=True)
 
 def set_players(pl):
-    """Update hanya di fase LOBBY."""
     if st.session_state.game_started:
         return
     h = _h(pl)
@@ -74,14 +77,13 @@ with tab_lobby:
             if res:
                 st.session_state.update(res)
                 st.session_state.game_started = False
-                st.session_state.cam_ctx = None
                 st.session_state.detected_move = None
                 st.session_state.move_ts = 0
                 st.session_state.move_sent = False
             else:
                 st.error(st.session_state.err or "Create failed")
 
-    # Join Room (Perbaikan Indentasi di Bagian Ini)
+    # Join Room
     with cB:
         room = st.text_input("Room ID").strip()
         if st.button("Join Room") and room:
@@ -93,7 +95,6 @@ with tab_lobby:
                     role=res.get("role")
                 )
                 st.session_state.game_started = False
-                st.session_state.cam_ctx = None
                 st.session_state.detected_move = None
                 st.session_state.move_ts = 0
                 st.session_state.move_sent = False
@@ -174,30 +175,39 @@ with tab_game:
         st.info("Press Ready on both sides, then click **Start Game**")
         st.stop()
 
-    if st.session_state.cam_ctx is None:
-        class VP(VideoProcessorBase):
-            def __init__(self):
-                self.hands = mp.solutions.hands.Hands(max_num_hands=1)
-                self.stab = GestureStabilizer()
+    # =====================================================
+    #  GAME VIEW
+    # =====================================================
+    class VideoProcessor(VideoProcessorBase):
+        def __init__(self):
+            self.last = RPSMove.NONE
+            
+        def recv(self, frame):
+            img = frame.to_ndarray(format="bgr24")
+            res = st.session_state.hands.process(img[:, :, ::-1])
+            
+            if res.multi_hand_landmarks:
+                mv = _classify_from_landmarks(res.multi_hand_landmarks[0])
+                stabilized = st.session_state.gesture_stabilizer.update(mv)
+                self.last = stabilized
+            else:
                 self.last = RPSMove.NONE
+                
+            return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-            def recv(self, frame):
-                img = frame.to_ndarray(format="bgr24")
-                res = self.hands.process(img[:, :, ::-1])
-                mv = (_classify_from_landmarks(res.multi_hand_landmarks[0])
-                      if res and res.multi_hand_landmarks else RPSMove.NONE)
-                self.last = self.stab.update(mv)
-                return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-        st.session_state.cam_ctx = webrtc_streamer(
-            key="cam",
-            mode=WebRtcMode.SENDONLY,
-            video_processor_factory=VP,
-            async_processing=True
-        )
-
-    ctx = st.session_state.cam_ctx
-    gesture = ctx.video_processor.last if ctx and ctx.video_processor else RPSMove.NONE
+    # Render kamera secara konsisten dengan key yang sama
+    ctx = webrtc_streamer(
+        key="rps-cam",
+        mode=WebRtcMode.SENDONLY,
+        video_processor_factory=VideoProcessor,
+        async_processing=True,
+        media_stream_constraints={"video": True, "audio": False}
+    )
+    
+    gesture = RPSMove.NONE
+    if ctx and ctx.video_processor:
+        gesture = ctx.video_processor.last
+        
     st.write(f"Live gesture → **{gesture.value.upper()}**")
 
     now = time.time()
