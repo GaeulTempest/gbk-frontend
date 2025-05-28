@@ -15,7 +15,8 @@ defaults = dict(
     game_id=None, player_id=None, role=None, player_name=None,
     players={}, _hash="", ws_thread=False, err=None,
     move_ts=0, detected_move=None, move_sent=False,
-    game_started=False, gesture_stabilizer=GestureStabilizer()
+    game_started=False, gesture_stabilizer=GestureStabilizer(),
+    camera_initialized=False  # Flag untuk tracking inisialisasi kamera
 )
 for k, v in defaults.items():
     st.session_state.setdefault(k, v)
@@ -171,6 +172,8 @@ with tab_game:
 
         if st.button("▶️ Start Game", disabled=not both_ready):
             st.session_state.game_started = True
+            st.session_state.camera_initialized = False  # Reset kamera
+            st.rerun()  # Force rerun untuk inisialisasi kamera
 
         st.info("Press Ready on both sides, then click **Start Game**")
         st.stop()
@@ -183,30 +186,39 @@ with tab_game:
             self.last = RPSMove.NONE
             
         def recv(self, frame):
-            img = frame.to_ndarray(format="bgr24")
-            res = st.session_state.hands.process(img[:, :, ::-1])
-            
-            if res.multi_hand_landmarks:
-                mv = _classify_from_landmarks(res.multi_hand_landmarks[0])
-                stabilized = st.session_state.gesture_stabilizer.update(mv)
-                self.last = stabilized
-            else:
-                self.last = RPSMove.NONE
+            try:
+                img = frame.to_ndarray(format="bgr24")
+                res = st.session_state.hands.process(img[:, :, ::-1])
                 
+                if res.multi_hand_landmarks:
+                    mv = _classify_from_landmarks(res.multi_hand_landmarks[0])
+                    stabilized = st.session_state.gesture_stabilizer.update(mv)
+                    self.last = stabilized
+                else:
+                    self.last = RPSMove.NONE
+            except Exception as e:
+                st.error(f"Camera error: {str(e)}")
+                self.last = RPSMove.NONE
             return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-    # Render kamera secara konsisten dengan key yang sama
-    ctx = webrtc_streamer(
-        key="rps-cam",
-        mode=WebRtcMode.SENDONLY,
-        video_processor_factory=VideoProcessor,
-        async_processing=True,
-        media_stream_constraints={"video": True, "audio": False}
-    )
+    # Gunakan container untuk kamera yang stabil
+    camera_container = st.empty()
     
+    if not st.session_state.camera_initialized:
+        with camera_container:
+            st.session_state.ctx = webrtc_streamer(
+                key="rps-cam",
+                mode=WebRtcMode.SENDONLY,
+                video_processor_factory=VideoProcessor,
+                async_processing=True,
+                media_stream_constraints={"video": True, "audio": False},
+                sendback_audio=False
+            )
+            st.session_state.camera_initialized = True
+
     gesture = RPSMove.NONE
-    if ctx and ctx.video_processor:
-        gesture = ctx.video_processor.last
+    if st.session_state.ctx and st.session_state.ctx.video_processor:
+        gesture = st.session_state.ctx.video_processor.last
         
     st.write(f"Live gesture → **{gesture.value.upper()}**")
 
