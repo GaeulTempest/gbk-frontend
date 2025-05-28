@@ -16,25 +16,28 @@ defaults = dict(
     players={}, _hash="", ws_thread=False, err=None,
     move_ts=0, detected_move=None, move_sent=False,
     game_started=False, gesture_stabilizer=GestureStabilizer(),
-    camera_initialized=False  # Flag untuk tracking inisialisasi kamera
+    camera_active=False, force_camera_key=0, camera_ctx=None
 )
 for k, v in defaults.items():
     st.session_state.setdefault(k, v)
 
-# Inisialisasi MediaPipe Hands sekali saja
+# Inisialisasi MediaPipe Hands
 if 'hands' not in st.session_state:
-    st.session_state.hands = mp.solutions.hands.Hands(max_num_hands=1)
+    st.session_state.hands = mp.solutions.hands.Hands(
+        static_image_mode=False,
+        max_num_hands=1,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5
+    )
 
-# ── Helper HTTP ────────────────────────────────────────
+# ── Helper Functions ──────────────────────────────────
 def post(path, **data):
     try:
         r = requests.post(f"{API}{path}", json=data, timeout=15)
         r.raise_for_status()
         return r.json()
     except requests.RequestException as e:
-        st.session_state.err = (
-            e.response.text if getattr(e, "response", None) else str(e)
-        )
+        st.session_state.err = e.response.text if e.response else str(e)
 
 def get_state(gid):
     try:
@@ -43,199 +46,168 @@ def get_state(gid):
         return r.json()
     except Exception as e:
         st.session_state.err = f"Failed to get state: {str(e)}"
-        return None
 
-def _h(pl): 
-    return json.dumps(pl, sort_keys=True)
+def _h(pl): return json.dumps(pl, sort_keys=True)
 
 def set_players(pl):
-    if st.session_state.game_started:
-        return
-    h = _h(pl)
-    if h != st.session_state._hash:
+    if _h(pl) != st.session_state._hash:
         st.session_state.players = pl
-        st.session_state._hash = h
+        st.session_state._hash = _h(pl)
 
 # =========================================================
 #  LOBBY TAB
 # =========================================================
-tab_lobby, tab_game = st.tabs(["🏠 Lobby", "🎮 Game"])
-with tab_lobby:
+with st.sidebar:
+    st.header("Lobby Settings")
     name = st.text_input("Your name", max_chars=20).strip()
-    if name:
-        st.session_state.player_name = name
-
+    if name: st.session_state.player_name = name
+    
     if not st.session_state.player_name:
         st.warning("Enter your name to continue.")
         st.stop()
 
-    cA, cB = st.columns(2)
-
-    # Create Room
-    with cA:
-        if st.button("Create Room"):
+    # Create/Join Room
+    room = st.text_input("Room ID").strip()
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Create Room") and name:
             res = post("/create_game", player_name=name)
-            if res:
-                st.session_state.update(res)
-                st.session_state.game_started = False
-                st.session_state.detected_move = None
-                st.session_state.move_ts = 0
-                st.session_state.move_sent = False
-            else:
-                st.error(st.session_state.err or "Create failed")
-
-    # Join Room
-    with cB:
-        room = st.text_input("Room ID").strip()
-        if st.button("Join Room") and room:
-            res = post(f"/join/{urllib.parse.quote(room)}", player_name=name)
-            if res:
-                st.session_state.update(
-                    game_id=room,
-                    player_id=res.get("player_id"),
-                    role=res.get("role")
-                )
-                st.session_state.game_started = False
-                st.session_state.detected_move = None
-                st.session_state.move_ts = 0
-                st.session_state.move_sent = False
-                snap = get_state(room)
-                if snap:
-                    set_players(snap.get("players", {}))
-                else:
-                    st.error(st.session_state.err or "Failed to get initial game state")
-            else:
-                st.error(st.session_state.err or "Join failed")
-
-    if not st.session_state.game_id:
-        st.info("Create or join a room to continue.")
-        st.stop()
-
-    st.success(
-        f"Connected as **{st.session_state.player_name} "
-        f"(Player {st.session_state.role})** | Room `{st.session_state.game_id}`"
-    )
+            if res: st.session_state.update(res)
+    with c2:
+        if st.button("Join Room") and room and name:
+            res = post(f"/join/{room}", player_name=name)
+            if res: st.session_state.update(res)
 
 # =========================================================
 #  GAME TAB
 # =========================================================
-with tab_game:
+def main_game_view():
     gid = st.session_state.game_id
-    if not gid:
-        st.info("Go to Lobby to create or join a room.")
-        st.stop()
+    if not gid: return st.info("Create or join a room first")
 
+    # WebSocket Connection
+    if not st.session_state.ws_thread:
+        WS_URI = API.replace("https", "wss", 1) + f"/ws/{gid}/{st.session_state.player_id}"
+        def ws_loop():
+            async def run():
+                while True:
+                    try:
+                        async with websockets.connect(WS_URI, ping_interval=WS_PING) as ws:
+                            while True:
+                                data = json.loads(await ws.recv())
+                                set_players(data["players"])
+                    except: await asyncio.sleep(1)
+            asyncio.run(run())
+        threading.Thread(target=ws_loop, daemon=True).start()
+        st.session_state.ws_thread = True
+
+    # Game Lobby State
     if not st.session_state.game_started:
-        if not st.session_state.ws_thread:
-            WS_URI = API.replace("https", "wss", 1) + f"/ws/{gid}/{st.session_state.player_id}"
-            def ws_loop():
-                async def run():
-                    while True:
-                        try:
-                            async with websockets.connect(WS_URI, ping_interval=WS_PING) as ws:
-                                while True:
-                                    data = json.loads(await ws.recv())
-                                    set_players(data["players"])
-                        except:
-                            await asyncio.sleep(1)
-                asyncio.run(run())
-            threading.Thread(target=ws_loop, daemon=True).start()
-            st.session_state.ws_thread = True
-
-        if st.button("🔄 Refresh status"):
-            snap = get_state(gid)
-            if snap:
-                set_players(snap["players"])
-            else:
-                st.error(st.session_state.err or "Fetch state failed")
-
         pl = st.session_state.players
+        st.header("Game Lobby")
+        st.write(f"Room ID: `{gid}`")
+        
+        # Player Status
         c1, c2 = st.columns(2)
-        for role, col in zip(("A", "B"), (c1, c2)):
+        for role, col in zip(["A", "B"], [c1, c2]):
             p = pl.get(role, {})
-            if p.get("name"):
-                col.markdown(f"**{role} – {p['name']}**")
-                col.write("✅ Ready" if p.get("ready") else "⏳ Not ready")
-            else:
-                col.write(f"*waiting Player {role}*")
+            col.markdown(f"### Player {role}: {p.get('name', 'Waiting')}")
+            col.write("✅ Ready" if p.get('ready') else "⏳ Not ready")
 
+        # Ready/Start Controls
         me_ready = pl.get(st.session_state.role, {}).get("ready", False)
-        both_ready = pl.get("A", {}).get("ready") and pl.get("B", {}).get("ready")
-
-        if not me_ready:
-            if st.button("I'm Ready", key=f"ready_{st.session_state.player_id}"):
-                snap = post(f"/ready/{gid}", player_id=st.session_state.player_id)
-                if snap:
-                    set_players(snap["players"])
-                else:
-                    st.error(st.session_state.err or "Ready failed")
-
-        if st.button("▶️ Start Game", disabled=not both_ready):
+        both_ready = all(pl.get(r, {}).get("ready") for r in ["A", "B"])
+        
+        if not me_ready and st.button("I'm Ready"):
+            post(f"/ready/{gid}", player_id=st.session_state.player_id)
+        
+        if st.button("▶ Start Game", disabled=not both_ready, type="primary"):
             st.session_state.game_started = True
-            st.session_state.camera_initialized = False  # Reset kamera
-            st.rerun()  # Force rerun untuk inisialisasi kamera
+            st.session_state.camera_active = False
+            st.session_state.force_camera_key += 1
+            time.sleep(0.3)
+            st.rerun()
+        
+        return st.stop()
 
-        st.info("Press Ready on both sides, then click **Start Game**")
-        st.stop()
-
-    # =====================================================
-    #  GAME VIEW
-    # =====================================================
-    class VideoProcessor(VideoProcessorBase):
-        def __init__(self):
-            self.last = RPSMove.NONE
-            
-        def recv(self, frame):
-            try:
-                img = frame.to_ndarray(format="bgr24")
-                res = st.session_state.hands.process(img[:, :, ::-1])
-                
-                if res.multi_hand_landmarks:
-                    mv = _classify_from_landmarks(res.multi_hand_landmarks[0])
-                    stabilized = st.session_state.gesture_stabilizer.update(mv)
-                    self.last = stabilized
-                else:
-                    self.last = RPSMove.NONE
-            except Exception as e:
-                st.error(f"Camera error: {str(e)}")
-                self.last = RPSMove.NONE
-            return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-    # Gunakan container untuk kamera yang stabil
-    camera_container = st.empty()
+    # Camera and Gameplay View
+    st.header("Gameplay - Show Your Move!")
     
-    if not st.session_state.camera_initialized:
-        with camera_container:
-            st.session_state.ctx = webrtc_streamer(
-                key="rps-cam",
+    # Camera Container System
+    main_cam_container = st.empty()
+    fallback_container = st.empty()
+    
+    if not st.session_state.camera_active:
+        with main_cam_container:
+            st.write("Initializing camera...")
+            st.session_state.camera_active = True
+            st.rerun()
+    else:
+        with main_cam_container:
+            class VideoProcessor(VideoProcessorBase):
+                def __init__(self):
+                    self.last = RPSMove.NONE
+                    self.last_frame = None
+                
+                def recv(self, frame):
+                    try:
+                        img = frame.to_ndarray(format="bgr24")
+                        res = st.session_state.hands.process(img[:, :, ::-1])
+                        
+                        if res.multi_hand_landmarks:
+                            mv = _classify_from_landmarks(res.multi_hand_landmarks[0])
+                            stabilized = st.session_state.gesture_stabilizer.update(mv)
+                            self.last = stabilized
+                        else:
+                            self.last = RPSMove.NONE
+                            
+                        self.last_frame = img
+                    except Exception as e:
+                        st.error(f"Camera error: {str(e)}")
+                    return av.VideoFrame.from_ndarray(img, format="bgr24")
+
+            ctx = webrtc_streamer(
+                key=f"rps-cam-{st.session_state.force_camera_key}",
                 mode=WebRtcMode.SENDONLY,
                 video_processor_factory=VideoProcessor,
                 async_processing=True,
                 media_stream_constraints={"video": True, "audio": False},
-                sendback_audio=False
+                sendback_audio=False,
+                rtc_configuration={"iceServers": []}
             )
-            st.session_state.camera_initialized = True
+            
+            if ctx and ctx.state.playing:
+                st.session_state.camera_ctx = ctx
+                fallback_container.empty()
+            else:
+                fallback_container.warning("Please allow camera access...")
 
-    gesture = RPSMove.NONE
-    if st.session_state.ctx and st.session_state.ctx.video_processor:
-        gesture = st.session_state.ctx.video_processor.last
+    # Gesture Detection Logic
+    if st.session_state.camera_ctx and st.session_state.camera_ctx.video_processor:
+        gesture = st.session_state.camera_ctx.video_processor.last
+        st.session_state.detected_move = gesture
         
-    st.write(f"Live gesture → **{gesture.value.upper()}**")
+        st.subheader(f"Detected Move: **{gesture.value.upper()}**")
+        
+        # Auto-Submit Logic
+        now = time.time()
+        if gesture != RPSMove.NONE:
+            if st.session_state.move_ts == 0:
+                st.session_state.move_ts = now
+                st.balloons()
+            
+            countdown = AUTO_SUBMIT_DELAY - (now - st.session_state.move_ts)
+            if countdown > 0:
+                st.progress(1 - (countdown / AUTO_SUBMIT_DELAY))
+                st.caption(f"Submitting {gesture.value} in {int(countdown)}s...")
+            else:
+                post(f"/move/{gid}", 
+                    player_id=st.session_state.player_id,
+                    move=gesture.value)
+                st.session_state.move_ts = 0
+                st.success("Move submitted!")
+        else:
+            st.session_state.move_ts = 0
 
-    now = time.time()
-    if gesture == RPSMove.NONE:
-        st.session_state.detected_move = None
-        st.session_state.move_ts = now
-        st.session_state.move_sent = False
-    else:
-        if st.session_state.detected_move != gesture:
-            st.session_state.detected_move = gesture
-            st.session_state.move_ts = now
-            st.session_state.move_sent = False
-        elif (not st.session_state.move_sent and
-              now - st.session_state.move_ts >= AUTO_SUBMIT_DELAY):
-            post(f"/move/{gid}",
-                 player_id=st.session_state.player_id,
-                 move=gesture.value)
-            st.session_state.move_sent = True
-            st.success(f"Sent **{gesture.value.upper()}**!")
+if __name__ == "__main__":
+    main_game_view()
