@@ -76,7 +76,10 @@ with st.sidebar:
     with c2:
         if st.button("Join Room") and room and name:
             res = post(f"/join/{room}", player_name=name)
-            if res: st.session_state.update(res)
+            if 'error' in res:  # Cek jika error
+                st.error("Room ID tidak ditemukan.")
+            elif res:
+                st.session_state.update(res)
 
 # =========================================================
 #  GAME TAB
@@ -111,7 +114,7 @@ def main_game_view():
         c1, c2 = st.columns(2)
         for role, col in zip(["A", "B"], [c1, c2]):
             p = pl.get(role, {})
-            col.markdown(f"### Player {role}: {p.get('name', 'Waiting')}")
+            col.markdown(f"### Player {role}: {p.get('name', 'Waiting')}")  # Menampilkan nama pemain
             col.write("✅ Ready" if p.get('ready') else "⏳ Not ready")
 
         # Ready/Start Controls
@@ -120,7 +123,10 @@ def main_game_view():
         
         if not me_ready and st.button("I'm Ready"):
             post(f"/ready/{gid}", player_id=st.session_state.player_id)
-        
+            # Menambahkan status siap ke player yang menekan tombol
+            st.session_state.players[st.session_state.role]["ready"] = True
+            st.experimental_rerun()  # refresh halaman setelah status ready diperbarui
+            
         if st.button("▶ Start Game", disabled=not both_ready, type="primary"):
             st.session_state.game_started = True
             st.session_state.camera_active = False
