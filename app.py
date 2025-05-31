@@ -122,11 +122,15 @@ def main_game_view():
         both_ready = all(pl.get(r, {}).get("ready") for r in ["A", "B"])
         
         if not me_ready and st.button("I'm Ready"):
-            post(f"/ready/{gid}", player_id=st.session_state.player_id)
-            # Menambahkan status siap ke player yang menekan tombol
-            st.session_state.players[st.session_state.role]["ready"] = True
-            st.experimental_rerun()  # refresh halaman setelah status ready diperbarui
-            
+            # Pastikan st.session_state.role valid dan ada dalam session_state
+            if st.session_state.role in st.session_state.players:
+                post(f"/ready/{gid}", player_id=st.session_state.player_id)
+                # Menambahkan status siap ke player yang menekan tombol
+                st.session_state.players[st.session_state.role]["ready"] = True
+                st.experimental_rerun()  # refresh halaman setelah status ready diperbarui
+            else:
+                st.error("Role tidak valid atau tidak terdeteksi.")
+        
         if st.button("▶ Start Game", disabled=not both_ready, type="primary"):
             st.session_state.game_started = True
             st.session_state.camera_active = False
