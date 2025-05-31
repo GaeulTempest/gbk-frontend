@@ -2,11 +2,6 @@ import json, threading, asyncio, time, urllib.parse, requests, av, websockets, m
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 from gesture_utils import RPSMove, GestureStabilizer, _classify_from_landmarks
-import logging  # Tambahkan import logging
-
-# Konfigurasi logger
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("StreamlitApp")  # Inisialisasi logger
 
 API = "https://web-production-7e17f.up.railway.app"
 WS_PING = 20
@@ -65,7 +60,8 @@ def set_players(pl):
 with st.sidebar:
     st.header("Lobby Settings")
     name = st.text_input("Your name", max_chars=20).strip()
-    if name: st.session_state.player_name = name
+    if name:
+        st.session_state.player_name = name
     
     if not st.session_state.player_name:
         st.warning("Enter your name to continue.")
@@ -74,63 +70,34 @@ with st.sidebar:
     # Create/Join Room
     room = st.text_input("Room ID").strip()
     c1, c2 = st.columns(2)
+    
+    # Tombol untuk membuat room
     with c1:
         if st.button("Create Room") and name:
-            res = post("/create_game", player_name=name)
-            if res: st.session_state.update(res)
+            try:
+                # Panggil API untuk membuat game
+                res = post("/create_game", player_name=name)
+                if res:
+                    # Update session_state dengan data game yang diterima dari backend
+                    st.session_state.game_id = res["game_id"]
+                    st.session_state.player_id = res["player_id"]
+                    st.session_state.role = res["role"]
+                    
+                    # Tampilkan informasi Room ID dan status sukses
+                    st.success(f"Game created successfully! Room ID: {res['game_id']}")
+                    st.write(f"Your Player ID: {res['player_id']}")
+                    st.write(f"Your Role: {res['role']}")
+            except Exception as e:
+                st.error(f"Failed to create game: {e}")
+
+    # Tombol untuk bergabung ke room
     with c2:
         if st.button("Join Room") and room and name:
-            res = post(f"/join/{room}", player_name=name)
-            if 'error' in res:  # Cek jika error
-                st.error("Room ID tidak ditemukan.")
-            elif res:
-                st.session_state.update(res)
-
-# =========================================================
-#  GAME TAB
-# =========================================================
-def main_game_view():
-    gid = st.session_state.game_id
-    if not gid: return st.info("Create or join a room first")
-
-    # WebSocket Connection
-    if not st.session_state.ws_thread:
-        WS_URI = API.replace("https", "wss", 1) + f"/ws/{gid}/{st.session_state.player_id}"
-        log.info(f"Connecting to WebSocket: {WS_URI}")  # Menambahkan log di sini
-        def ws_loop():
-            async def run():
-                while True:
-                    try:
-                        async with websockets.connect(WS_URI, ping_interval=WS_PING) as ws:
-                            log.info("WebSocket connected!")  # WebSocket berhasil terhubung
-                            while True:
-                                data = json.loads(await ws.recv())
-                                set_players(data["players"])
-                    except Exception as e:
-                        log.error(f"Error connecting to WebSocket: {str(e)}")  # Error WebSocket
-                        await asyncio.sleep(1)
-        threading.Thread(target=ws_loop, daemon=True).start()
-        st.session_state.ws_thread = True
-
-    # Game Lobby State
-    if not st.session_state.game_started:
-        pl = st.session_state.players
-        st.header("Game Lobby")
-        st.write(f"Room ID: `{gid}`")
-        
-        # Player Status
-        c1, c2 = st.columns(2)
-        for role, col in zip(["A", "B"], [c1, c2]):
-            p = pl.get(role, {})
-            col.markdown(f"### Player {role}: {p.get('name', 'Waiting')}")  # Menampilkan nama pemain
-            col.write("✅ Ready" if p.get('ready') else "⏳ Not ready")
-
-        # Ready/Start Controls
-        me_ready = pl.get(st.session_state.role, {}).get("ready", False)
-        both_ready = all(pl.get(r, {}).get("ready") for r in ["A", "B"])
-        
-        if not me_ready and st.button("I'm Ready"):
-            # Pastikan st.session_state.role valid dan ada dalam session_state
-            if st.session_state.role in st.session_state.players:
-                post(f"/ready/{gid}", player_id=st.session_state.player_id)
-                #
+            try:
+                res = post(f"/join/{room}", player_name=name)
+                if 'error' in res:
+                    st.error("Room ID tidak ditemukan.")
+                elif res:
+                    st.session_state.update(res)
+            except Exception as e:
+                st.error(f"Failed to join room: {e}")
