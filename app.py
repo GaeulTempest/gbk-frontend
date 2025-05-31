@@ -2,6 +2,11 @@ import json, threading, asyncio, time, urllib.parse, requests, av, websockets, m
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 from gesture_utils import RPSMove, GestureStabilizer, _classify_from_landmarks
+import logging  # Tambahkan import logging
+
+# Konfigurasi logger
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("StreamlitApp")  # Inisialisasi logger
 
 API = "https://web-production-7e17f.up.railway.app"
 WS_PING = 20
@@ -128,100 +133,4 @@ def main_game_view():
             # Pastikan st.session_state.role valid dan ada dalam session_state
             if st.session_state.role in st.session_state.players:
                 post(f"/ready/{gid}", player_id=st.session_state.player_id)
-                # Menambahkan status siap ke player yang menekan tombol
-                st.session_state.players[st.session_state.role]["ready"] = True
-                st.experimental_rerun()  # refresh halaman setelah status ready diperbarui
-            else:
-                st.error("Role tidak valid atau tidak terdeteksi.")
-        
-        if st.button("▶ Start Game", disabled=not both_ready, type="primary"):
-            st.session_state.game_started = True
-            st.session_state.camera_active = False
-            st.session_state.force_camera_key += 1
-            time.sleep(0.3)
-            st.rerun()
-        
-        return st.stop()
-
-    # Camera and Gameplay View
-    st.header("Gameplay - Show Your Move!")
-    
-    # Camera Container System
-    main_cam_container = st.empty()
-    fallback_container = st.empty()
-    
-    if not st.session_state.camera_active:
-        with main_cam_container:
-            st.write("Initializing camera...")
-            st.session_state.camera_active = True
-            st.rerun()
-    else:
-        with main_cam_container:
-            class VideoProcessor(VideoProcessorBase):
-                def __init__(self):
-                    self.last = RPSMove.NONE
-                    self.last_frame = None
-                
-                def recv(self, frame):
-                    try:
-                        img = frame.to_ndarray(format="bgr24")
-                        res = st.session_state.hands.process(img[:, :, ::-1])
-                        
-                        if res.multi_hand_landmarks:
-                            mv = _classify_from_landmarks(res.multi_hand_landmarks[0])
-                            stabilized = st.session_state.gesture_stabilizer.update(mv)
-                            self.last = stabilized
-                        else:
-                            self.last = RPSMove.NONE
-                            
-                        self.last_frame = img
-                    except Exception as e:
-                        st.error(f"Camera error: {str(e)}")
-                    return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-            ctx = webrtc_streamer(
-                key=f"rps-cam-{st.session_state.force_camera_key}",
-                mode=WebRtcMode.SENDONLY,
-                video_processor_factory=VideoProcessor,
-                async_processing=True,
-                media_stream_constraints={"video": True, "audio": False},
-                sendback_audio=False,
-                rtc_configuration={"iceServers": []}
-            )
-            
-            if ctx and ctx.state.playing:
-                st.session_state.camera_ctx = ctx
-                fallback_container.empty()
-            else:
-                fallback_container.warning("Please allow camera access...")
-
-    # Gesture Detection Logic
-    if st.session_state.camera_ctx and st.session_state.camera_ctx.video_processor:
-        gesture = st.session_state.camera_ctx.video_processor.last
-        st.session_state.detected_move = gesture
-        
-        st.subheader(f"Detected Move: **{gesture.value.upper()}**")
-        
-        # Auto-Submit Logic
-        now = time.time()
-        if gesture != RPSMove.NONE:
-            if st.session_state.move_ts == 0:
-                st.session_state.move_ts = now
-                st.balloons()
-            
-            countdown = AUTO_SUBMIT_DELAY - (now - st.session_state.move_ts)
-            if countdown > 0:
-                st.progress(1 - (countdown / AUTO_SUBMIT_DELAY))
-                st.caption(f"Submitting {gesture.value} in {int(countdown)}s...")
-            else:
-                post(f"/move/{gid}", 
-                    player_id=st.session_state.player_id,
-                    move=gesture.value)
-                st.session_state.move_ts = 0
-                st.success("Move submitted!")
-        else:
-            st.session_state.move_ts = 0
-
-if __name__ == "__main__":
-    main_game_view()
-
+                #
