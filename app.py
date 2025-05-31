@@ -91,16 +91,19 @@ def main_game_view():
     # WebSocket Connection
     if not st.session_state.ws_thread:
         WS_URI = API.replace("https", "wss", 1) + f"/ws/{gid}/{st.session_state.player_id}"
+        log.info(f"Connecting to WebSocket: {WS_URI}")  # Menambahkan log di sini
         def ws_loop():
             async def run():
                 while True:
                     try:
                         async with websockets.connect(WS_URI, ping_interval=WS_PING) as ws:
+                            log.info("WebSocket connected!")  # WebSocket berhasil terhubung
                             while True:
                                 data = json.loads(await ws.recv())
                                 set_players(data["players"])
-                    except: await asyncio.sleep(1)
-            asyncio.run(run())
+                    except Exception as e:
+                        log.error(f"Error connecting to WebSocket: {str(e)}")  # Error WebSocket
+                        await asyncio.sleep(1)
         threading.Thread(target=ws_loop, daemon=True).start()
         st.session_state.ws_thread = True
 
@@ -221,3 +224,4 @@ def main_game_view():
 
 if __name__ == "__main__":
     main_game_view()
+
