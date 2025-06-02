@@ -53,9 +53,10 @@ def set_players(pl):
         st.session_state._hash = h
 
 # =========================================================
-#  LOBBY TAB
+#  LOBBY SECTION
 # =========================================================
-tab_lobby, tab_game = st.tabs(["🏠 Lobby", "🎮 Game"])
+tab_lobby, tab_player, tab_game = st.tabs(["🏠 Lobby", "👾 Player", "🎮 Game"])
+
 with tab_lobby:
     name = st.text_input("Your name", max_chars=20).strip()
     if name:
@@ -81,7 +82,7 @@ with tab_lobby:
             else:
                 st.error(st.session_state.err or "Create failed")
 
-    # Join Room (Perbaikan Indentasi di Bagian Ini)
+    # Join Room
     with cB:
         room = st.text_input("Room ID").strip()
         if st.button("Join Room") and room:
@@ -115,66 +116,49 @@ with tab_lobby:
     )
 
 # =========================================================
-#  GAME TAB
+#  PLAYER SECTION
 # =========================================================
-with tab_game:
-    gid = st.session_state.game_id
-    if not gid:
-        st.info("Go to Lobby to create or join a room.")
-        st.stop()
+with tab_player:
+    pl = st.session_state.players
+    c1, c2 = st.columns(2)
+    for role, col in zip(("A", "B"), (c1, c2)):
+        p = pl.get(role, {})
+        if p.get("name"):
+            col.markdown(f"**{role} – {p['name']}**")
+            col.write("✅ Ready" if p.get("ready") else "⏳ Not ready")
+        else:
+            col.write(f"*waiting Player {role}*")
 
-    if not st.session_state.game_started:
-        if not st.session_state.ws_thread:
-            WS_URI = API.replace("https", "wss", 1) + f"/ws/{gid}/{st.session_state.player_id}"
-            def ws_loop():
-                async def run():
-                    while True:
-                        try:
-                            async with websockets.connect(WS_URI, ping_interval=WS_PING) as ws:
-                                while True:
-                                    data = json.loads(await ws.recv())
-                                    set_players(data["players"])
-                        except:
-                            await asyncio.sleep(1)
-                asyncio.run(run())
-            threading.Thread(target=ws_loop, daemon=True).start()
-            st.session_state.ws_thread = True
+    me_ready = pl.get(st.session_state.role, {}).get("ready", False)
+    both_ready = pl.get("A", {}).get("ready") and pl.get("B", {}).get("ready")
 
-        if st.button("🔄 Refresh status"):
-            snap = get_state(gid)
+    if not me_ready:
+        if st.button("I'm Ready", key=f"ready_{st.session_state.player_id}"):
+            snap = post(f"/ready/{st.session_state.game_id}", player_id=st.session_state.player_id)
             if snap:
                 set_players(snap["players"])
             else:
-                st.error(st.session_state.err or "Fetch state failed")
+                st.error(st.session_state.err or "Ready failed")
 
-        pl = st.session_state.players
-        c1, c2 = st.columns(2)
-        for role, col in zip(("A", "B"), (c1, c2)):
-            p = pl.get(role, {})
-            if p.get("name"):
-                col.markdown(f"**{role} – {p['name']}**")
-                col.write("✅ Ready" if p.get("ready") else "⏳ Not ready")
-            else:
-                col.write(f"*waiting Player {role}*")
+    if both_ready:
+        st.success("Both players are ready! Go to the **Game** tab to start!")
+    else:
+        st.info("Both players need to be ready before starting the game.")
 
-        me_ready = pl.get(st.session_state.role, {}).get("ready", False)
-        both_ready = pl.get("A", {}).get("ready") and pl.get("B", {}).get("ready")
-
-        if not me_ready:
-            if st.button("I'm Ready", key=f"ready_{st.session_state.player_id}"):
-                snap = post(f"/ready/{gid}", player_id=st.session_state.player_id)
-                if snap:
-                    set_players(snap["players"])
-                else:
-                    st.error(st.session_state.err or "Ready failed")
-
-        if st.button("▶️ Start Game", disabled=not both_ready):
-            st.session_state.game_started = True
-
-        st.info("Press Ready on both sides, then click **Start Game**")
+# =========================================================
+#  GAME SECTION
+# =========================================================
+with tab_game:
+    if not st.session_state.game_started:
+        st.warning("The game will start once both players are ready.")
         st.stop()
 
-    if st.session_state.cam_ctx is None:
+    st.write("### Select Camera Device")
+    video_devices = webrtc_streamer.get_video_devices()
+    camera_device = st.selectbox("Choose your camera device", video_devices)
+
+    # Starting the game and webcam stream
+    if camera_device:
         class VP(VideoProcessorBase):
             def __init__(self):
                 self.hands = mp.solutions.hands.Hands(max_num_hands=1)
@@ -193,27 +177,7 @@ with tab_game:
             key="cam",
             mode=WebRtcMode.SENDONLY,
             video_processor_factory=VP,
-            async_processing=True
+            async_processing=True,
+            video_device=camera_device  # Using the selected camera device
         )
-
-    ctx = st.session_state.cam_ctx
-    gesture = ctx.video_processor.last if ctx and ctx.video_processor else RPSMove.NONE
-    st.write(f"Live gesture → **{gesture.value.upper()}**")
-
-    now = time.time()
-    if gesture == RPSMove.NONE:
-        st.session_state.detected_move = None
-        st.session_state.move_ts = now
-        st.session_state.move_sent = False
-    else:
-        if st.session_state.detected_move != gesture:
-            st.session_state.detected_move = gesture
-            st.session_state.move_ts = now
-            st.session_state.move_sent = False
-        elif (not st.session_state.move_sent and
-              now - st.session_state.move_ts >= AUTO_SUBMIT_DELAY):
-            post(f"/move/{gid}",
-                 player_id=st.session_state.player_id,
-                 move=gesture.value)
-            st.session_state.move_sent = True
-            st.success(f"Sent **{gesture.value.upper()}**!")
+        st.info("Press **Start Game** to begin playing!")
