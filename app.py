@@ -175,7 +175,7 @@ with tab_game:
         st.stop()
 
     # ===============================================
-    # Pastikan Kamera Tetap Muncul
+    # Pastikan Kamera Tetap Muncul Setelah Start Game
     # ===============================================
     if st.session_state.cam_ctx is None and st.session_state.game_started:
         class VP(VideoProcessorBase):
@@ -192,7 +192,7 @@ with tab_game:
                 self.last = self.stab.update(mv)
                 return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-        # Memastikan kamera tetap aktif setelah tombol Start Game
+        # Menginisialisasi kamera hanya jika game sudah dimulai
         st.session_state.cam_ctx = webrtc_streamer(
             key="cam",
             mode=WebRtcMode.SENDONLY,  # memastikan mode kirim video
@@ -200,6 +200,7 @@ with tab_game:
             async_processing=True
         )
 
+    # Menampilkan hasil gerakan tangan
     ctx = st.session_state.cam_ctx
     gesture = ctx.video_processor.last if ctx and ctx.video_processor else RPSMove.NONE
     st.write(f"Live gesture → **{gesture.value.upper()}**")
@@ -221,4 +222,3 @@ with tab_game:
                  move=gesture.value)
             st.session_state.move_sent = True
             st.success(f"Sent **{gesture.value.upper()}**!")
-
