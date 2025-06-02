@@ -132,14 +132,16 @@ with tab_player:
     me_ready = pl.get(st.session_state.role, {}).get("ready", False)
     both_ready = pl.get("A", {}).get("ready") and pl.get("B", {}).get("ready")
 
+    # Pemain tekan tombol Ready
     if not me_ready:
         if st.button("I'm Ready", key=f"ready_{st.session_state.player_id}"):
             snap = post(f"/ready/{st.session_state.game_id}", player_id=st.session_state.player_id)
             if snap:
-                set_players(snap["players"])
+                set_players(snap["players"])  # Sinkronisasi status pemain setelah update di backend
             else:
                 st.error(st.session_state.err or "Ready failed")
 
+    # Cek jika kedua pemain siap
     if both_ready:
         st.success("Both players are ready! Go to the **Game** tab to start!")
     else:
