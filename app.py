@@ -40,7 +40,7 @@ def get_state(gid):
         st.session_state.err = f"Failed to get state: {str(e)}"
         return None
 
-def _h(pl): 
+def _h(pl):
     return json.dumps(pl, sort_keys=True)
 
 def set_players(pl):
@@ -53,7 +53,7 @@ def set_players(pl):
         st.session_state._hash = h
 
 # =========================================================
-#  LOBBY SECTION (Kembali ke semula)
+#  LOBBY SECTION
 # =========================================================
 tab_lobby, tab_player, tab_game = st.tabs(["🏠 Lobby", "👾 Player", "🎮 Game"])
 
@@ -137,24 +137,28 @@ with tab_player:
         if st.button("I'm Ready", key=f"ready_{st.session_state.player_id}"):
             snap = post(f"/ready/{st.session_state.game_id}", player_id=st.session_state.player_id)
             if snap:
-                set_players(snap["players"])  # Sinkronisasi status pemain setelah update di backend
-                st.session_state.players = snap["players"]  # Menyinkronkan status player ke session_state
+                set_players(snap["players"])
+                st.session_state.players = snap["players"]
             else:
                 st.error(st.session_state.err or "Ready failed")
 
-    # Tombol untuk Refresh Status
-    if st.button("Refresh Status"):
-        snap = get_state(st.session_state.game_id)
-        if snap:
-            set_players(snap["players"])  # Sinkronisasi status terbaru
-        else:
-            st.error(st.session_state.err or "Failed to refresh status")
+    # Tombol Refresh Status (lebih kecil, hanya ikon 🔄)
+    st.write("")  # spacer
+    refresh_col, _ = st.columns([1, 4])
+    with refresh_col:
+        if st.button("🔄"):
+            snap = get_state(st.session_state.game_id)
+            if snap:
+                set_players(snap["players"])
+                st.session_state.players = snap["players"]
+            else:
+                st.error(st.session_state.err or "Failed to refresh status")
 
-    # Cek jika kedua pemain siap
+    # Jika kedua pemain sudah ready, tampilkan notifikasi sukses
     if both_ready:
-        st.success("Both players are ready! Go to the **Game** tab to start!")
+        st.success("🎉 Semua pemain sudah READY! Silakan beralih ke tab Game.")
     else:
-        st.info("Both players need to be ready before starting the game.")
+        st.info("Kedua pemain harus menekan READY sebelum memulai game.")
 
 # =========================================================
 #  GAME SECTION
