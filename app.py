@@ -189,12 +189,14 @@ with tab_game:
                 self.last = self.stab.update(mv)
                 return av.VideoFrame.from_ndarray(img, format="bgr24")
 
+        # Memastikan kamera aktif setelah Start Game
         st.session_state.cam_ctx = webrtc_streamer(
             key="cam",
-            mode=WebRtcMode.SENDONLY,
+            mode=WebRtcMode.SENDONLY,  # pastikan mode sesuai kebutuhan
             video_processor_factory=VP,
             async_processing=True
         )
+
 
     ctx = st.session_state.cam_ctx
     gesture = ctx.video_processor.last if ctx and ctx.video_processor else RPSMove.NONE
