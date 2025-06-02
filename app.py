@@ -53,7 +53,7 @@ def set_players(pl):
         st.session_state._hash = h
 
 # =========================================================
-#  LOBBY SECTION
+#  LOBBY SECTION (Kembali ke semula)
 # =========================================================
 tab_lobby, tab_player, tab_game = st.tabs(["🏠 Lobby", "👾 Player", "🎮 Game"])
 
@@ -78,4 +78,25 @@ with tab_lobby:
                 st.session_state.cam_ctx = None
                 st.session_state.detected_move = None
                 st.session_state.move_ts = 0
-                st.session_state_
+                st.session_state.move_sent = False
+            else:
+                st.error(st.session_state.err or "Create failed")
+
+    # Join Room
+    with cB:
+        room = st.text_input("Room ID").strip()
+        if st.button("Join Room") and room:
+            res = post(f"/join/{urllib.parse.quote(room)}", player_name=name)
+            if res:
+                st.session_state.update(
+                    game_id=room,
+                    player_id=res.get("player_id"),
+                    role=res.get("role")
+                )
+                st.session_state.game_started = False
+                st.session_state.cam_ctx = None
+                st.session_state.detected_move = None
+                st.session_state.move_ts = 0
+                st.session_state.move_sent = False
+                snap = get_state(room)
+                if
