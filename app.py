@@ -40,7 +40,7 @@ def get_state(gid):
         st.session_state.err = f"Failed to get state: {str(e)}"
         return None
 
-def _h(pl): 
+def _h(pl):
     return json.dumps(pl, sort_keys=True)
 
 def set_players(pl):
@@ -170,16 +170,16 @@ with tab_game:
         st.warning("The game will start once both players are ready.")
         st.stop()
 
-    # Get the list of available camera devices
-    video_devices = webrtc_streamer.get_video_devices()
+    # Menampilkan pilihan perangkat kamera
+    st.write("### Pilih Perangkat Kamera")
+    video_devices = webrtc_streamer.get_available_devices()
 
     if video_devices:
-        st.write("### Select Camera Device")
-        camera_device = st.selectbox("Choose your camera device", video_devices)
+        camera_device = st.selectbox("Pilih perangkat kamera", video_devices)
     else:
-        st.error("No video devices found!")
+        st.error("Tidak ada perangkat video yang ditemukan!")
 
-    # Starting the game and webcam stream
+    # Memulai permainan dan stream kamera
     if camera_device:
         class VP(VideoProcessorBase):
             def __init__(self):
@@ -200,6 +200,6 @@ with tab_game:
             mode=WebRtcMode.SENDONLY,
             video_processor_factory=VP,
             async_processing=True,
-            video_device=camera_device  # Using the selected camera device
+            video_device=camera_device  # Menggunakan perangkat kamera yang dipilih
         )
-        st.info("Press **Start Game** to begin playing!")
+        st.info("Tekan **Start Game** untuk memulai permainan!")
