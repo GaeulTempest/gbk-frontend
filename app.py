@@ -40,7 +40,7 @@ def get_state(gid):
         st.session_state.err = f"Failed to get state: {str(e)}"
         return None
 
-def _h(pl):
+def _h(pl): 
     return json.dumps(pl, sort_keys=True)
 
 def set_players(pl):
@@ -142,7 +142,7 @@ with tab_player:
             else:
                 st.error(st.session_state.err or "Ready failed")
 
-    # Tombol Refresh Status (lebih kecil, hanya ikon 🔄)
+    # Tombol untuk Refresh Status (lebih kecil, hanya ikon 🔄)
     st.write("")  # spacer
     refresh_col, _ = st.columns([1, 4])
     with refresh_col:
@@ -154,9 +154,11 @@ with tab_player:
             else:
                 st.error(st.session_state.err or "Failed to refresh status")
 
-    # Jika kedua pemain sudah ready, tampilkan notifikasi sukses
+    # Jika kedua pemain sudah ready, tampilkan notifikasi sukses dan setel game_started = True
     if both_ready:
         st.success("🎉 Semua pemain sudah READY! Silakan beralih ke tab Game.")
+        # Setel game_started menjadi True setelah kedua pemain ready
+        st.session_state.game_started = True
     else:
         st.info("Kedua pemain harus menekan READY sebelum memulai game.")
 
