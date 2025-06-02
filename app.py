@@ -138,7 +138,9 @@ with tab_player:
             snap = post(f"/ready/{st.session_state.game_id}", player_id=st.session_state.player_id)
             if snap:
                 set_players(snap["players"])  # Sinkronisasi status pemain setelah update di backend
-                st.experimental_rerun()  # Auto-refresh setelah pemain menekan Ready
+                st.session_state.players = snap["players"]  # Menyinkronkan status player ke session_state
+                # Force refresh halaman player untuk update status
+                st.experimental_rerun()  # Refresh setelah pemain menekan Ready
             else:
                 st.error(st.session_state.err or "Ready failed")
 
