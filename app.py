@@ -44,7 +44,7 @@ def _h(pl):
     return json.dumps(pl, sort_keys=True)
 
 def set_players(pl):
-    """Update hanya di fase LOBBY."""
+    """Update hanya di fase LOBBY.""" 
     if st.session_state.game_started:
         return
     h = _h(pl)
@@ -81,7 +81,7 @@ with tab_lobby:
             else:
                 st.error(st.session_state.err or "Create failed")
 
-    # Join Room (Perbaikan Indentasi di Bagian Ini)
+    # Join Room
     with cB:
         room = st.text_input("Room ID").strip()
         if st.button("Join Room") and room:
@@ -196,7 +196,6 @@ with tab_game:
             video_processor_factory=VP,
             async_processing=True
         )
-
 
     ctx = st.session_state.cam_ctx
     gesture = ctx.video_processor.last if ctx and ctx.video_processor else RPSMove.NONE
