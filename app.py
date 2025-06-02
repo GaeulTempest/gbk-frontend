@@ -1,113 +1,219 @@
+import json, threading, asyncio, time, urllib.parse, requests, av, websockets, mediapipe as mp
 import streamlit as st
-import requests
-import json
-import time
-from streamlit_webrtc import webrtc_streamer, WebRtcMode
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
+from gesture_utils import RPSMove, GestureStabilizer, _classify_from_landmarks
 
-API_URL = os.getenv("API_URL", "http://localhost:8000")
-WS_URL = API_URL.replace("http", "ws", 1)
+API = "https://web-production-7e17f.up.railway.app"
+WS_PING = 20
+AUTO_SUBMIT_DELAY = 5  # detik gesture stabil sebelum auto-submit
 
-st.set_page_config("Game Room", "🎮")
-st.title("🎮 Multiplayer Game Lobby")
+st.set_page_config("RPS Gesture Game", "✊")
+st.title("✊ Rock-Paper-Scissors Online")
 
-if "player" not in st.session_state:
-    st.session_state.player = {"name": "", "room": None}
+# ── Inisialisasi session_state ─────────────────────────
+defaults = dict(
+    game_id=None, player_id=None, role=None, player_name=None,
+    players={}, _hash="", ws_thread=False, err=None,
+    move_ts=0, detected_move=None, move_sent=False,
+    cam_ctx=None, game_started=False
+)
+for k, v in defaults.items():
+    st.session_state.setdefault(k, v)
 
-def refresh_rooms():
+# ── Helper HTTP ────────────────────────────────────────
+def post(path, **data):
     try:
-        res = requests.get(f"{API_URL}/list-rooms")
-        st.session_state.rooms = res.json()["rooms"]
-    except:
-        st.error("Gagal memuat room")
+        r = requests.post(f"{API}{path}", json=data, timeout=15)
+        r.raise_for_status()
+        return r.json()
+    except requests.RequestException as e:
+        st.session_state.err = (
+            e.response.text if getattr(e, "response", None) else str(e)
+        )
 
-# Form Nama Pemain
-with st.expander("🏷️ Set Nama Pemain", expanded=not st.session_state.player["name"]):
-    name = st.text_input("Nama Anda", max_chars=20)
-    if st.button("Simpan Nama"):
-        st.session_state.player["name"] = name.strip()
-        st.rerun()
+def get_state(gid):
+    try:
+        r = requests.get(f"{API}/state/{gid}", timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        st.session_state.err = f"Failed to get state: {str(e)}"
+        return None
 
-if not st.session_state.player["name"]:
-    st.warning("Harap masukkan nama Anda terlebih dahulu")
-    st.stop()
+def _h(pl): 
+    return json.dumps(pl, sort_keys=True)
 
-# Tab Utama
-tab1, tab2 = st.tabs(["🏠 Lobby Room", "🎮 Game Room"])
+def set_players(pl):
+    """Update hanya di fase LOBBY."""
+    if st.session_state.game_started:
+        return
+    h = _h(pl)
+    if h != st.session_state._hash:
+        st.session_state.players = pl
+        st.session_state._hash = h
 
-with tab1:
-    st.header("Daftar Room Tersedia")
-    refresh = st.button("🔄 Refresh")
-    if refresh:
-        refresh_rooms()
-    
-    cols = st.columns([1, 2, 2, 1, 2])
-    cols[0].write("**ID**")
-    cols[1].write("**Pemilik**")
-    cols[2].write("**Pemain**")
-    cols[3].write("**Status**")
-    cols[4].write("**Aksi**")
-    
-    if "rooms" not in st.session_state:
-        refresh_rooms()
-        
-    for room in st.session_state.rooms:
-        cols = st.columns([1, 2, 2, 1, 2])
-        cols[0].code(room["id"][:6])
-        cols[1].write(room["owner"])
-        cols[2].write(f"{room['players']}/{room['max_players']}")
-        cols[3].code(room["status"])
-        
-        if cols[4].button("Join", key=f"join_{room['id']}"):
-            res = requests.post(
-                f"{API_URL}/join-room/{room['id']}",
-                json={"playerName": st.session_state.player["name"]}
-            )
-            if res.status_code == 200:
-                st.session_state.player["room"] = res.json()["room"]
-                st.rerun()
-            else:
-                st.error("Gagal masuk room")
+# =========================================================
+#  LOBBY TAB
+# =========================================================
+tab_lobby, tab_game = st.tabs(["🏠 Lobby", "🎮 Game"])
+with tab_lobby:
+    name = st.text_input("Your name", max_chars=20).strip()
+    if name:
+        st.session_state.player_name = name
 
-    st.divider()
-    with st.form("Buat Room Baru"):
-        max_players = st.number_input("Maks Pemain", 2, 8, 4)
-        if st.form_submit_button("Buat Room Baru"):
-            res = requests.post(
-                f"{API_URL}/create-room",
-                json={"playerName": st.session_state.player["name"]}
-            )
-            st.session_state.player["room"] = res.json()["room"]
-            st.rerun()
-
-with tab2:
-    if not st.session_state.player.get("room"):
-        st.info("Pilih atau buat room di tab Lobby")
+    if not st.session_state.player_name:
+        st.warning("Enter your name to continue.")
         st.stop()
-        
-    room = st.session_state.player["room"]
-    st.header(f"Room {room['id'][:6]}")
-    st.subheader(f"Pemilik: {room['owner']}")
-    
-    webrtc_ctx = webrtc_streamer(
-        key="cam",
-        mode=WebRtcMode.SENDRECV,
-        media_stream_constraints={"video": True, "audio": False},
+
+    cA, cB = st.columns(2)
+
+    # Create Room
+    with cA:
+        if st.button("Create Room"):
+            res = post("/create_game", player_name=name)
+            if res:
+                st.session_state.update(res)
+                st.session_state.game_started = False
+                st.session_state.cam_ctx = None
+                st.session_state.detected_move = None
+                st.session_state.move_ts = 0
+                st.session_state.move_sent = False
+            else:
+                st.error(st.session_state.err or "Create failed")
+
+    # Join Room (Perbaikan Indentasi di Bagian Ini)
+    with cB:
+        room = st.text_input("Room ID").strip()
+        if st.button("Join Room") and room:
+            res = post(f"/join/{urllib.parse.quote(room)}", player_name=name)
+            if res:
+                st.session_state.update(
+                    game_id=room,
+                    player_id=res.get("player_id"),
+                    role=res.get("role")
+                )
+                st.session_state.game_started = False
+                st.session_state.cam_ctx = None
+                st.session_state.detected_move = None
+                st.session_state.move_ts = 0
+                st.session_state.move_sent = False
+                snap = get_state(room)
+                if snap:
+                    set_players(snap.get("players", {}))
+                else:
+                    st.error(st.session_state.err or "Failed to get initial game state")
+            else:
+                st.error(st.session_state.err or "Join failed")
+
+    if not st.session_state.game_id:
+        st.info("Create or join a room to continue.")
+        st.stop()
+
+    st.success(
+        f"Connected as **{st.session_state.player_name} "
+        f"(Player {st.session_state.role})** | Room `{st.session_state.game_id}`"
     )
-    
-    if room and room["status"] == "waiting":
-        with st.expander("👥 Daftar Pemain"):
-            for player in room["players"]:
-                st.markdown(f"- {player}")
-            
-        if len(room["players"]) >= room["max_players"]:
-            if st.button("🚀 Mulai Game"):
-                room["status"] = "playing"
-                requests.post(f"{API_URL}/update-room", json=room)
-    
-    st.markdown("""
-    <style>
-        section[data-testid="stSidebar"] {
-            width: 400px !important;
-        }
-    </style>
-    """, unsafe_allow_html=True)
+
+# =========================================================
+#  GAME TAB
+# =========================================================
+with tab_game:
+    gid = st.session_state.game_id
+    if not gid:
+        st.info("Go to Lobby to create or join a room.")
+        st.stop()
+
+    if not st.session_state.game_started:
+        if not st.session_state.ws_thread:
+            WS_URI = API.replace("https", "wss", 1) + f"/ws/{gid}/{st.session_state.player_id}"
+            def ws_loop():
+                async def run():
+                    while True:
+                        try:
+                            async with websockets.connect(WS_URI, ping_interval=WS_PING) as ws:
+                                while True:
+                                    data = json.loads(await ws.recv())
+                                    set_players(data["players"])
+                        except:
+                            await asyncio.sleep(1)
+                asyncio.run(run())
+            threading.Thread(target=ws_loop, daemon=True).start()
+            st.session_state.ws_thread = True
+
+        if st.button("🔄 Refresh status"):
+            snap = get_state(gid)
+            if snap:
+                set_players(snap["players"])
+            else:
+                st.error(st.session_state.err or "Fetch state failed")
+
+        pl = st.session_state.players
+        c1, c2 = st.columns(2)
+        for role, col in zip(("A", "B"), (c1, c2)):
+            p = pl.get(role, {})
+            if p.get("name"):
+                col.markdown(f"**{role} – {p['name']}**")
+                col.write("✅ Ready" if p.get("ready") else "⏳ Not ready")
+            else:
+                col.write(f"*waiting Player {role}*")
+
+        me_ready = pl.get(st.session_state.role, {}).get("ready", False)
+        both_ready = pl.get("A", {}).get("ready") and pl.get("B", {}).get("ready")
+
+        if not me_ready:
+            if st.button("I'm Ready", key=f"ready_{st.session_state.player_id}"):
+                snap = post(f"/ready/{gid}", player_id=st.session_state.player_id)
+                if snap:
+                    set_players(snap["players"])
+                else:
+                    st.error(st.session_state.err or "Ready failed")
+
+        if st.button("▶️ Start Game", disabled=not both_ready):
+            st.session_state.game_started = True
+
+        st.info("Press Ready on both sides, then click **Start Game**")
+        st.stop()
+
+    if st.session_state.cam_ctx is None:
+        class VP(VideoProcessorBase):
+            def __init__(self):
+                self.hands = mp.solutions.hands.Hands(max_num_hands=1)
+                self.stab = GestureStabilizer()
+                self.last = RPSMove.NONE
+
+            def recv(self, frame):
+                img = frame.to_ndarray(format="bgr24")
+                res = self.hands.process(img[:, :, ::-1])
+                mv = (_classify_from_landmarks(res.multi_hand_landmarks[0])
+                      if res and res.multi_hand_landmarks else RPSMove.NONE)
+                self.last = self.stab.update(mv)
+                return av.VideoFrame.from_ndarray(img, format="bgr24")
+
+        st.session_state.cam_ctx = webrtc_streamer(
+            key="cam",
+            mode=WebRtcMode.SENDONLY,
+            video_processor_factory=VP,
+            async_processing=True
+        )
+
+    ctx = st.session_state.cam_ctx
+    gesture = ctx.video_processor.last if ctx and ctx.video_processor else RPSMove.NONE
+    st.write(f"Live gesture → **{gesture.value.upper()}**")
+
+    now = time.time()
+    if gesture == RPSMove.NONE:
+        st.session_state.detected_move = None
+        st.session_state.move_ts = now
+        st.session_state.move_sent = False
+    else:
+        if st.session_state.detected_move != gesture:
+            st.session_state.detected_move = gesture
+            st.session_state.move_ts = now
+            st.session_state.move_sent = False
+        elif (not st.session_state.move_sent and
+              now - st.session_state.move_ts >= AUTO_SUBMIT_DELAY):
+            post(f"/move/{gid}",
+                 player_id=st.session_state.player_id,
+                 move=gesture.value)
+            st.session_state.move_sent = True
+            st.success(f"Sent **{gesture.value.upper()}**!")
