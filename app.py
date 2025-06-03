@@ -40,7 +40,7 @@ def get_state(gid):
         st.session_state.err = f"Failed to get state: {str(e)}"
         return None
 
-def _h(pl):
+def _h(pl): 
     return json.dumps(pl, sort_keys=True)
 
 def set_players(pl):
@@ -170,36 +170,15 @@ with tab_game:
         st.warning("The game will start once both players are ready.")
         st.stop()
 
-    # Menampilkan pilihan perangkat kamera
+    # Menampilkan perangkat kamera menggunakan webrtc_streamer
     st.write("### Pilih Perangkat Kamera")
-    video_devices = webrtc_streamer.get_video_devices()
-
-    if video_devices:
-        camera_device = st.selectbox("Pilih perangkat kamera", video_devices)
-    else:
-        st.error("Tidak ada perangkat video yang ditemukan!")
-
-    # Memulai permainan dan stream kamera
-    if camera_device:
-        class VP(VideoProcessorBase):
-            def __init__(self):
-                self.hands = mp.solutions.hands.Hands(max_num_hands=1)
-                self.stab = GestureStabilizer()
-                self.last = RPSMove.NONE
-
-            def recv(self, frame):
-                img = frame.to_ndarray(format="bgr24")
-                res = self.hands.process(img[:, :, ::-1])
-                mv = (_classify_from_landmarks(res.multi_hand_landmarks[0])
-                      if res and res.multi_hand_landmarks else RPSMove.NONE)
-                self.last = self.stab.update(mv)
-                return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-        st.session_state.cam_ctx = webrtc_streamer(
-            key="cam",
-            mode=WebRtcMode.SENDONLY,
-            video_processor_factory=VP,
-            async_processing=True,
-            video_device=camera_device  # Menggunakan perangkat kamera yang dipilih
-        )
-        st.info("Tekan **Start Game** untuk memulai permainan!")
+    
+    # Penggunaan webrtc_streamer secara langsung
+    st.session_state.cam_ctx = webrtc_streamer(
+        key="cam",
+        mode=WebRtcMode.SENDONLY,
+        video_processor_factory=VideoProcessorBase,
+        async_processing=True
+    )
+    
+    st.info("Tekan **Start Game** untuk memulai permainan!")
