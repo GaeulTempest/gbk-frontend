@@ -172,7 +172,7 @@ with tab_game:
 
     # Menampilkan pilihan perangkat kamera
     st.write("### Pilih Perangkat Kamera")
-    video_devices = webrtc_streamer.get_available_devices()
+    video_devices = webrtc_streamer.get_video_devices()
 
     if video_devices:
         camera_device = st.selectbox("Pilih perangkat kamera", video_devices)
