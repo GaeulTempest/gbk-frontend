@@ -182,8 +182,8 @@ with tab_game:
         }]
     )
     
-    # Nonaktifkan auto-submit dan matikan sementara deteksi gerakan
-    # Gunakan only video stream tanpa gesture processing
+    # Gunakan video_processor_factory untuk mengatur pemrosesan video
+    # Jika tidak ingin ada pemrosesan video (hanya untuk debugging)
     st.session_state.cam_ctx = webrtc_streamer(
         key="cam",
         mode=WebRtcMode.SENDONLY,
@@ -192,7 +192,8 @@ with tab_game:
         async_processing=True
     )
 
-    # Pastikan bahwa kamera bisa ditampilkan tanpa deteksi gerakan
-    # Tidak mencoba mengatur video_processor langsung lagi
-    
+    # Pastikan kamera muncul tanpa memerlukan device selection berulang kali
+    if st.session_state.cam_ctx:
+        st.session_state.cam_ctx.video_processor = None  # Jangan modifikasi langsung
+
     st.info("Tekan **Start Game** untuk memulai permainan setelah kamera muncul.")
