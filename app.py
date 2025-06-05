@@ -44,10 +44,15 @@ def set_players(pl):
     """Update hanya di fase LOBBY."""
     if st.session_state.game_started:
         return
-    h = _h(pl)
+    h = _h(pl)  # Ensure _h function is defined properly to handle 'pl' variable
     if h != st.session_state._hash:
         st.session_state.players = pl
         st.session_state._hash = h
+
+# ── Function to generate hash for players (defined here) ──
+def _h(players):
+    """Generate hash for the players dictionary to track updates."""
+    return json.dumps(players, sort_keys=True)  # Generate hash by sorting the keys
 
 # =========================================================
 #  LOBBY SECTION
