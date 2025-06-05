@@ -40,9 +40,6 @@ def get_state(gid):
         st.session_state.err = f"Failed to get state: {str(e)}"
         return None
 
-def _h(pl): 
-    return json.dumps(pl, sort_keys=True)
-
 def set_players(pl):
     """Update hanya di fase LOBBY."""
     if st.session_state.game_started:
@@ -173,12 +170,17 @@ with tab_game:
     # Menampilkan perangkat kamera menggunakan webrtc_streamer
     st.write("### Pilih Perangkat Kamera")
     
-    # Penggunaan webrtc_streamer secara langsung
+    # Add gesture detection context to camera
     st.session_state.cam_ctx = webrtc_streamer(
         key="cam",
         mode=WebRtcMode.SENDONLY,
         video_processor_factory=VideoProcessorBase,
         async_processing=True
     )
+
+    # Add the hand gesture processor
+    if st.session_state.cam_ctx:
+        st.session_state.cam_ctx.video_processor = VideoProcessorBase
+        st.session_state.cam_ctx.video_processor.update(st.session_state.detected_move)
     
     st.info("Tekan **Start Game** untuk memulai permainan!")
