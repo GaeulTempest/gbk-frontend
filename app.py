@@ -1,6 +1,6 @@
 import json, threading, asyncio, time, urllib.parse, requests, av, websockets, mediapipe as mp
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
 from gesture_utils import RPSMove, GestureStabilizer, _classify_from_landmarks
 
 API = "https://web-production-7e17f.up.railway.app"
@@ -170,17 +170,25 @@ with tab_game:
     # Menampilkan perangkat kamera menggunakan webrtc_streamer
     st.write("### Pilih Perangkat Kamera")
     
-    # Add gesture detection context to camera
+    # Tambahkan konfigurasi STUN server untuk koneksi WebRTC
+    rtc_configuration = RTCConfiguration(
+        ice_servers=[{
+            'urls': 'stun:stun.l.google.com:19302'  # Server STUN dari Google
+        }]
+    )
+    
+    # Nonaktifkan auto-submit dan matikan sementara deteksi gerakan
+    # Gunakan only video stream tanpa gesture processing
     st.session_state.cam_ctx = webrtc_streamer(
         key="cam",
         mode=WebRtcMode.SENDONLY,
-        video_processor_factory=VideoProcessorBase,
+        video_processor_factory=None,  # Matikan video processor untuk debugging
+        rtc_configuration=rtc_configuration,
         async_processing=True
     )
 
-    # Add the hand gesture processor
+    # Pastikan bahwa kamera bisa ditampilkan tanpa deteksi gerakan
     if st.session_state.cam_ctx:
-        st.session_state.cam_ctx.video_processor = VideoProcessorBase
-        st.session_state.cam_ctx.video_processor.update(st.session_state.detected_move)
+        st.session_state.cam_ctx.video_processor = None  # Tidak ada pemrosesan video untuk saat ini
     
-    st.info("Tekan **Start Game** untuk memulai permainan!")
+    st.info("Tekan **Start Game** untuk memulai permainan setelah kamera muncul.")
