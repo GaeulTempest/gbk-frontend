@@ -192,8 +192,6 @@ with tab_game:
         async_processing=True
     )
 
-    # Pastikan kamera muncul tanpa memerlukan device selection berulang kali
-    if st.session_state.cam_ctx:
-        st.session_state.cam_ctx.video_processor = None  # Jangan modifikasi langsung
-
+    # Tidak mencoba untuk mengubah `video_processor` langsung
+    # WebRTC akan menangani sendiri video stream tanpa pemrosesan
     st.info("Tekan **Start Game** untuk memulai permainan setelah kamera muncul.")
