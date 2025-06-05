@@ -193,7 +193,6 @@ with tab_game:
     )
 
     # Pastikan bahwa kamera bisa ditampilkan tanpa deteksi gerakan
-    if st.session_state.cam_ctx:
-        st.session_state.cam_ctx.video_processor = None  # Tidak ada pemrosesan video untuk saat ini
+    # Tidak mencoba mengatur video_processor langsung lagi
     
     st.info("Tekan **Start Game** untuk memulai permainan setelah kamera muncul.")
