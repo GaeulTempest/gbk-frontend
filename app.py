@@ -120,9 +120,10 @@ with tab_lobby:
                 st.error(st.session_state.err or "Create failed")
 
     # Join Room
-    with cB:
-        room = st.text_input("Enter Room ID to Join").strip()
-        if st.button("Join Room") and room:
+  with cB:
+    room = st.text_input("Enter Room ID to Join").strip()
+    if st.button("Join Room") and room:
+        try:
             res = post(f"/join/{urllib.parse.quote(room)}", player_name=name)
             if res:
                 st.session_state.update(
@@ -143,6 +144,8 @@ with tab_lobby:
                     st.error(st.session_state.err or "Failed to get initial game state")
             else:
                 st.error(st.session_state.err or "Join failed")
+        except requests.RequestException as e:
+            st.error(f"Failed to join room: {str(e)}")
 
     if not st.session_state.game_id:
         st.info("Create or join a room to continue.")
