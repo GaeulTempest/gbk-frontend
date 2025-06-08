@@ -90,6 +90,16 @@ else:
 # =========================================================
 tab_lobby, tab_game = st.tabs(["🏠 Lobby", "🎮 Game"])
 
+def set_players(pl):
+    """Update state for players and handle data properly."""
+    if st.session_state.game_started:
+        return
+    # Compare hash of the player data, if changed, update session state
+    h = json.dumps(pl, sort_keys=True)
+    if h != st.session_state._hash:
+        st.session_state.players = pl
+        st.session_state._hash = h
+
 with tab_lobby:
     st.subheader("Lobby: Create or Join Room")
     
@@ -176,7 +186,7 @@ with tab_game:
                             async with websockets.connect(WS_URI, ping_interval=WS_PING) as ws:
                                 while True:
                                     data = json.loads(await ws.recv())
-                                    set_players(data["players"])
+                                    set_players(data["players"])  # Updating players' data
                         except:
                             await asyncio.sleep(1)
                 asyncio.run(run())
