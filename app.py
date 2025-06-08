@@ -58,7 +58,7 @@ if stun_turn_config:
         "iceServers": ice_servers
     })
 else:
-    st.warning("STUN/TURN configuration could not be retrieved.")
+    st.warning("STUN/TURN configuration could not be retrieved. Ensure Xirsys API is working.")
 
 # =========================================================
 #  LOBBY TAB
@@ -140,6 +140,7 @@ with tab_game:
     if not st.session_state.game_started:
         if not st.session_state.ws_thread:
             WS_URI = API.replace("https", "wss", 1) + f"/ws/{gid}/{st.session_state.player_id}"
+
             def ws_loop():
                 async def run():
                     while True:
