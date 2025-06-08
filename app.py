@@ -133,4 +133,35 @@ with tab_lobby:
     with cB:
         room = st.text_input("Enter Room ID to Join").strip()
         if st.button("Join Room") and room:
-           
+            try:
+                res = post(f"/join/{urllib.parse.quote(room)}", player_name=name)
+                if res:
+                    st.session_state.update(
+                        game_id=room,
+                        player_id=res.get("player_id"),
+                        role=res.get("role")
+                    )
+                    st.session_state.game_started = False
+                    st.session_state.cam_ctx = None
+                    st.session_state.detected_move = None
+                    st.session_state.move_ts = 0
+                    st.session_state.move_sent = False
+                    snap = get_state(room)
+                    if snap:
+                        set_players(snap.get("players", {}))
+                        st.success(f"Joined Room `{room}` as **Player {st.session_state.role}**")
+                    else:
+                        st.error(st.session_state.err or "Failed to get initial game state")
+                else:
+                    st.error(st.session_state.err or "Join failed")
+            except requests.RequestException as e:
+                st.error(f"Failed to join room: {str(e)}")
+
+    if not st.session_state.game_id:
+        st.info("Create or join a room to continue.")
+        st.stop()
+
+    st.success(
+        f"Connected as **{st.session_state.player_name} "
+        f"(Player {st.session_state.role})** | Room `{st.session_state.game_id}`"
+    )
