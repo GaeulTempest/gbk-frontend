@@ -185,7 +185,7 @@ with tab_game:
                             async with websockets.connect(WS_URI, ping_interval=WS_PING) as ws:
                                 while True:
                                     data = json.loads(await ws.recv())
-                                    set_players(data["players"])
+                                    set_players(data.get("players", {}))  # Safeguard against missing players
                         except:
                             await asyncio.sleep(1)
                 asyncio.run(run())
@@ -195,7 +195,6 @@ with tab_game:
         if st.button("🔄 Refresh status"):
             snap = get_state(gid)
             if snap:
-                # Safeguard against missing "players" key
                 players = snap.get("players", {})
                 set_players(players)
             else:
@@ -218,7 +217,7 @@ with tab_game:
             if st.button("I'm Ready", key=f"ready_{st.session_state.player_id}"):
                 snap = post(f"/ready/{gid}", player_id=st.session_state.player_id)
                 if snap:
-                    set_players(snap["players"])
+                    set_players(snap.get("players", {}))
                 else:
                     st.error(st.session_state.err or "Ready failed")
 
