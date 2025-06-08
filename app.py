@@ -45,7 +45,7 @@ def get_stun_turn_config():
         response = requests.get(f"{API}/stun_turn_config", timeout=10)
         response.raise_for_status()
         return response.json()
-    except Exception as e:
+    except requests.RequestException as e:
         st.session_state.err = f"Failed to get STUN/TURN config: {str(e)}"
         return None
 
