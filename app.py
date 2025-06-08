@@ -2,7 +2,7 @@ import json, threading, asyncio, time, urllib.parse, requests, av, websockets, m
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration, VideoProcessorBase
 from gesture_utils import RPSMove, GestureStabilizer, _classify_from_landmarks
-import base64  # Add this import statement for base64 encoding
+import base64  # Add this import for base64 encoding
 
 API = "https://web-production-7e17f.up.railway.app"
 WS_PING = 20
@@ -49,7 +49,7 @@ def get_stun_turn_config():
         
         # Encode the credentials to Base64 for Basic Authentication
         auth_value = f"{ident}:{secret}"
-        base64_auth_value = base64.b64encode(auth_value.encode('utf-8')).decode('utf-8')  # Fix here by importing base64
+        base64_auth_value = base64.b64encode(auth_value.encode('utf-8')).decode('utf-8')
 
         # URL to get STUN/TURN servers from Xirsys
         url = f"https://global.xirsys.net/_turn/{channel}"
@@ -120,32 +120,32 @@ with tab_lobby:
                 st.error(st.session_state.err or "Create failed")
 
     # Join Room
-  with cB:
-    room = st.text_input("Enter Room ID to Join").strip()
-    if st.button("Join Room") and room:
-        try:
-            res = post(f"/join/{urllib.parse.quote(room)}", player_name=name)
-            if res:
-                st.session_state.update(
-                    game_id=room,
-                    player_id=res.get("player_id"),
-                    role=res.get("role")
-                )
-                st.session_state.game_started = False
-                st.session_state.cam_ctx = None
-                st.session_state.detected_move = None
-                st.session_state.move_ts = 0
-                st.session_state.move_sent = False
-                snap = get_state(room)
-                if snap:
-                    set_players(snap.get("players", {}))
-                    st.success(f"Joined Room `{room}` as **Player {st.session_state.role}**")
+    with cB:
+        room = st.text_input("Enter Room ID to Join").strip()
+        if st.button("Join Room") and room:
+            try:
+                res = post(f"/join/{urllib.parse.quote(room)}", player_name=name)
+                if res:
+                    st.session_state.update(
+                        game_id=room,
+                        player_id=res.get("player_id"),
+                        role=res.get("role")
+                    )
+                    st.session_state.game_started = False
+                    st.session_state.cam_ctx = None
+                    st.session_state.detected_move = None
+                    st.session_state.move_ts = 0
+                    st.session_state.move_sent = False
+                    snap = get_state(room)
+                    if snap:
+                        set_players(snap.get("players", {}))
+                        st.success(f"Joined Room `{room}` as **Player {st.session_state.role}**")
+                    else:
+                        st.error(st.session_state.err or "Failed to get initial game state")
                 else:
-                    st.error(st.session_state.err or "Failed to get initial game state")
-            else:
-                st.error(st.session_state.err or "Join failed")
-        except requests.RequestException as e:
-            st.error(f"Failed to join room: {str(e)}")
+                    st.error(st.session_state.err or "Join failed")
+            except requests.RequestException as e:
+                st.error(f"Failed to join room: {str(e)}")
 
     if not st.session_state.game_id:
         st.info("Create or join a room to continue.")
