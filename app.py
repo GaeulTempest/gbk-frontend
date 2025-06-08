@@ -2,6 +2,7 @@ import json, threading, asyncio, time, urllib.parse, requests, av, websockets, m
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration, VideoProcessorBase
 from gesture_utils import RPSMove, GestureStabilizer, _classify_from_landmarks
+import base64  # Add this import statement for base64 encoding
 
 API = "https://web-production-7e17f.up.railway.app"
 WS_PING = 20
@@ -48,7 +49,7 @@ def get_stun_turn_config():
         
         # Encode the credentials to Base64 for Basic Authentication
         auth_value = f"{ident}:{secret}"
-        base64_auth_value = base64.b64encode(auth_value.encode('utf-8')).decode('utf-8')
+        base64_auth_value = base64.b64encode(auth_value.encode('utf-8')).decode('utf-8')  # Fix here by importing base64
 
         # URL to get STUN/TURN servers from Xirsys
         url = f"https://global.xirsys.net/_turn/{channel}"
