@@ -142,8 +142,13 @@ with tab_lobby:
                     st.session_state.move_sent = False
                     snap = get_state(room)
                     if snap:
-                        set_players(snap.get("players", {}))
-                        st.success(f"Joined Room `{room}` as **Player {st.session_state.role}**")
+                        # Safeguard against missing "players" key
+                        players = snap.get("players", {})
+                        set_players(players)
+                        if players:
+                            st.success(f"Joined Room `{room}` as **Player {st.session_state.role}**")
+                        else:
+                            st.error("Failed to retrieve player data")
                     else:
                         st.error(st.session_state.err or "Failed to get initial game state")
                 else:
@@ -190,7 +195,9 @@ with tab_game:
         if st.button("🔄 Refresh status"):
             snap = get_state(gid)
             if snap:
-                set_players(snap["players"])
+                # Safeguard against missing "players" key
+                players = snap.get("players", {})
+                set_players(players)
             else:
                 st.error(st.session_state.err or "Fetch state failed")
 
