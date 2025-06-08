@@ -2,7 +2,7 @@ import json, threading, asyncio, time, urllib.parse, requests, av, websockets, m
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration, VideoProcessorBase
 from gesture_utils import RPSMove, GestureStabilizer, _classify_from_landmarks
-import base64
+import base64  # Add this import for base64 encoding
 
 API = "https://web-production-7e17f.up.railway.app"
 WS_PING = 20
@@ -41,7 +41,53 @@ def get_state(gid):
         st.session_state.err = f"Failed to get state: {str(e)}"
         return None
 
-# ── LOBBY TAB ───────────────────────────────────────
+def get_stun_turn_config():
+    try:
+        ident = "wawanshot"
+        secret = "6ebc02ec-4257-11f0-9543-aa614b70fb40"
+        channel = "multiplayergbk"
+        
+        # Encode the credentials to Base64 for Basic Authentication
+        auth_value = f"{ident}:{secret}"
+        base64_auth_value = base64.b64encode(auth_value.encode('utf-8')).decode('utf-8')
+
+        # URL to get STUN/TURN servers from Xirsys
+        url = f"https://global.xirsys.net/_turn/{channel}"
+
+        # Headers for Xirsys API request
+        headers = {
+            "Authorization": f"Basic {base64_auth_value}",
+            "Content-Type": "application/json"
+        }
+
+        # Data for Xirsys API request
+        data = {"format": "urls"}
+
+        # Make the PUT request to Xirsys
+        response = requests.put(url, headers=headers, json=data)
+        response.raise_for_status()
+
+        return response.json()
+    
+    except requests.RequestException as e:
+        st.session_state.err = f"Failed to get STUN/TURN config: {str(e)}"
+        st.warning("STUN/TURN configuration could not be retrieved. Ensure Xirsys API is working.")
+        return None
+
+# ── Ambil konfigurasi STUN/TURN dari server ─────────────────
+stun_turn_config = get_stun_turn_config()
+
+if stun_turn_config:
+    ice_servers = stun_turn_config.get("iceServers", [])
+    RTC_CONFIG = RTCConfiguration({
+        "iceServers": ice_servers
+    })
+else:
+    st.warning("STUN/TURN configuration could not be retrieved. Ensure Xirsys API is working.")
+
+# =========================================================
+#  LOBBY TAB
+# =========================================================
 tab_lobby, tab_game = st.tabs(["🏠 Lobby", "🎮 Game"])
 
 def set_players(pl):
@@ -114,7 +160,9 @@ with tab_lobby:
         f"(Player {st.session_state.role})** | Room `{st.session_state.game_id}`"
     )
 
-# ── GAME TAB ───────────────────────────────────────
+# =========================================================
+#  GAME TAB
+# =========================================================
 with tab_game:
     gid = st.session_state.game_id
     if not gid:
